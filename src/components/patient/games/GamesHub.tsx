@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
-import { PictureMatchingGame } from './PictureMatchingGame';
+import { MemoryMatchGame } from './MemoryMatchGame';
 import { MatchTheOrderGame } from './MatchTheOrderGame';
 import { GuessThePictureGame } from './GuessThePictureGame';
+import { SpacedRetrievalGame } from './SpacedRetrievalGame';
 import { Mascot } from '../../common/Mascot';
 import { SpeechButton } from '../../common/SpeechButton';
 import { soundFx } from '../../../utils/audio';
-import { BrainCircuit, Flame, Trophy, Play, Layers, Eye } from 'lucide-react';
+import { BrainCircuit, Flame, Trophy, Play, Layers, Eye, Sparkles, HelpCircle } from 'lucide-react';
 
 export const GamesHub: React.FC = () => {
   const { streak, totalStars, gameHistory, t, selectedRegion } = useApp();
-  const [activeGame, setActiveGame] = useState<'none' | 'picture-match' | 'match-order' | 'guess-picture'>('none');
+  const [activeGame, setActiveGame] = useState<'none' | 'memory-match' | 'match-order' | 'guess-picture' | 'spaced-retrieval'>('none');
 
   // Page Visibility API: Stop audio and terminate active game state immediately on tab switch
   useEffect(() => {
@@ -30,8 +31,8 @@ export const GamesHub: React.FC = () => {
     };
   }, []);
 
-  if (activeGame === 'picture-match') {
-    return <PictureMatchingGame onBack={() => setActiveGame('none')} />;
+  if (activeGame === 'memory-match') {
+    return <MemoryMatchGame onBack={() => setActiveGame('none')} />;
   }
 
   if (activeGame === 'match-order') {
@@ -40,6 +41,10 @@ export const GamesHub: React.FC = () => {
 
   if (activeGame === 'guess-picture') {
     return <GuessThePictureGame onBack={() => setActiveGame('none')} />;
+  }
+
+  if (activeGame === 'spaced-retrieval') {
+    return <SpacedRetrievalGame onBack={() => setActiveGame('none')} />;
   }
 
   return (
@@ -60,6 +65,9 @@ export const GamesHub: React.FC = () => {
                 <span className="bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 font-black text-xs sm:text-sm px-3 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
                   {totalStars} {t('memoryPoints')}
                 </span>
+                <span className="bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-black text-xs sm:text-sm px-3 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700 capitalize">
+                  {selectedRegion ? selectedRegion.replace('-', ' ') : 'Assam'}
+                </span>
               </div>
               <p className="text-sm font-bold text-stone-600 dark:text-stone-300 mt-1">
                 {t('gamesMascotGreeting')}
@@ -78,38 +86,38 @@ export const GamesHub: React.FC = () => {
         </div>
       </div>
 
-      {/* 3 North-East Localized Game Cards (Targeted by Spotlight Tour) */}
-      <div id="brain-games-cards" className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Game 1: Picture Matching (Card Flip) */}
+      {/* 4 North-East Localized Game Cards (Targeted by Spotlight Tour) */}
+      <div id="brain-games-cards" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* Game 1: Memory Match Pairs (Visual Recall & Card Flip) */}
         <div className="duo-card p-5 flex flex-col justify-between hover:border-emerald-500 transition-all border-3 border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800">
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-2 border-emerald-500 flex items-center justify-center">
-                <Layers className="w-6 h-6" />
+                <Sparkles className="w-6 h-6" />
               </div>
               <SpeechButton 
-                text={`${t('pictureMatchTitle')}. ${t('pictureMatchDesc')}`} 
+                text={`${t('memoryMatchTitle') || 'Memory Match Pairs'}. ${t('memoryMatchDesc') || 'Find matching cultural cards from your region to exercise focus and recall.'}`} 
                 size="sm" 
               />
             </div>
 
             <div className="mb-2">
               <span className="bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 font-black text-xs px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-emerald-300 dark:border-emerald-700">
-                {t('visualRecall')}
+                {t('visualRecall') || 'Visual Recall & Focus'}
               </span>
             </div>
 
             <h3 className="text-xl sm:text-2xl font-black text-stone-900 dark:text-white tracking-tight mb-2">
-              {t('pictureMatchTitle')}
+              {t('memoryMatchTitle') || 'Memory Match Pairs'}
             </h3>
             <p className="text-sm font-bold text-stone-600 dark:text-stone-300 mb-5 leading-relaxed">
-              {t('pictureMatchDesc')}
+              {t('memoryMatchDesc') || 'Find matching cultural cards from your region to exercise spatial and short-term memory.'}
             </p>
           </div>
 
           <button
-            onClick={() => setActiveGame('picture-match')}
-            className="w-full duo-btn duo-btn-green text-base font-black min-h-[56px] flex items-center justify-center gap-2"
+            onClick={() => setActiveGame('memory-match')}
+            className="w-full duo-btn duo-btn-green text-base font-black min-h-[56px] flex items-center justify-center gap-2 cursor-pointer"
           >
             <Play className="w-5 h-5 fill-white" />
             <span>{t('playGame')}</span>
@@ -145,7 +153,7 @@ export const GamesHub: React.FC = () => {
 
           <button
             onClick={() => setActiveGame('match-order')}
-            className="w-full duo-btn duo-btn-amber text-base font-black min-h-[56px] flex items-center justify-center gap-2"
+            className="w-full duo-btn duo-btn-amber text-base font-black min-h-[56px] flex items-center justify-center gap-2 cursor-pointer"
           >
             <Play className="w-5 h-5 fill-white" />
             <span>{t('playGame')}</span>
@@ -181,7 +189,43 @@ export const GamesHub: React.FC = () => {
 
           <button
             onClick={() => setActiveGame('guess-picture')}
-            className="w-full duo-btn bg-blue-600 text-white border-b-4 border-blue-800 hover:bg-blue-700 active:border-b-0 active:translate-y-1 text-base font-black min-h-[56px] flex items-center justify-center gap-2 rounded-2xl transition-all shadow-sm"
+            className="w-full duo-btn bg-blue-600 text-white border-b-4 border-blue-800 hover:bg-blue-700 active:border-b-0 active:translate-y-1 text-base font-black min-h-[56px] flex items-center justify-center gap-2 rounded-2xl transition-all shadow-sm cursor-pointer"
+          >
+            <Play className="w-5 h-5 fill-white" />
+            <span>{t('playGame')}</span>
+          </button>
+        </div>
+
+        {/* Game 4: Spaced Retrieval Trivia */}
+        <div className="duo-card p-5 flex flex-col justify-between hover:border-rose-500 transition-all border-3 border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800">
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border-2 border-rose-500 flex items-center justify-center">
+                <HelpCircle className="w-6 h-6" />
+              </div>
+              <SpeechButton 
+                text="Spaced Retrieval Trivia. Practice personalized memory questions." 
+                size="sm" 
+              />
+            </div>
+
+            <div className="mb-2">
+              <span className="bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 font-black text-xs px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-rose-300 dark:border-rose-700">
+                Long-Term Retrieval
+              </span>
+            </div>
+
+            <h3 className="text-xl sm:text-2xl font-black text-stone-900 dark:text-white tracking-tight mb-2">
+              Spaced Retrieval Trivia
+            </h3>
+            <p className="text-sm font-bold text-stone-600 dark:text-stone-300 mb-5 leading-relaxed">
+              Answer personalized family and cultural questions at optimal intervals to strengthen memory pathways.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setActiveGame('spaced-retrieval')}
+            className="w-full duo-btn bg-rose-600 text-white border-b-4 border-rose-800 hover:bg-rose-700 active:border-b-0 active:translate-y-1 text-base font-black min-h-[56px] flex items-center justify-center gap-2 rounded-2xl transition-all shadow-sm cursor-pointer"
           >
             <Play className="w-5 h-5 fill-white" />
             <span>{t('playGame')}</span>

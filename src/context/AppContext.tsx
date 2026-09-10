@@ -13,6 +13,9 @@ import {
   fetchLiveWeather,
   getDevicePosition,
   reverseGeocode,
+  formatFriendlyLocation,
+  isCoordinateString,
+  NER_STATE_CAPITALS,
 } from '../utils/locationWeather';
 
 export type { SupportedLanguage, NERStateId, LocationData, WeatherData };
@@ -325,12 +328,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const isLoggedIn = auth.isLoggedIn;
   const user = auth.appUser
     ? {
-        name: auth.appUser.name,
-        email: auth.appUser.email,
-        avatar: auth.appUser.avatar,
-      }
+      name: auth.appUser.name,
+      email: auth.appUser.email,
+      avatar: auth.appUser.avatar,
+    }
     : null;
-  
+
   const [language, setLanguageState] = useState<SupportedLanguage>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('smriti_lang') : null;
     return (saved as SupportedLanguage) || 'en';
@@ -382,7 +385,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSpotlightActive, setIsSpotlightActive] = useState<boolean>(false);
   const [spotlightStep, setSpotlightStep] = useState<number>(0);
 
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => 
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
     deviceNotifications.getPermissionStatus()
   );
 
@@ -485,8 +488,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem('sanjivni_saved_location');
       if (saved) {
         try {
-          return JSON.parse(saved);
-        } catch {}
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            // Immediately sanitize stored coordinates into a friendly location name
+            if (isCoordinateString(parsed.displayName)) {
+              parsed.displayName = formatFriendlyLocation(parsed);
+              if (isCoordinateString(parsed.city)) {
+                parsed.city = parsed.displayName.split(',')[0].trim();
+              }
+            }
+            return parsed;
+          }
+        } catch { }
       }
     }
     return DEFAULT_NER_LOCATION;
@@ -498,7 +511,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         try {
           return JSON.parse(saved);
-        } catch {}
+        } catch { }
       }
     }
     return DEFAULT_WEATHER;
@@ -517,11 +530,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Reverse geocode to get city, neighborhood, state
       const geocoded = await reverseGeocode(lat, lng);
-
-      const newLocation: LocationData = {
+      const friendlyName = formatFriendlyLocation({
         coordinates: { lat, lng },
         displayName: geocoded.displayName,
         city: geocoded.city,
+        state: geocoded.state,
+        permission: 'granted',
+        isLiveGps: true,
+      });
+
+      const resolvedCity = geocoded.city && !isCoordinateString(geocoded.city)
+        ? geocoded.city
+        : friendlyName.split(',')[0].trim();
+
+      const newLocation: LocationData = {
+        coordinates: { lat, lng },
+        displayName: friendlyName,
+        city: resolvedCity,
         state: geocoded.state,
         permission: 'granted',
         isLiveGps: true,
@@ -540,7 +565,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           lat,
           lng,
           lastUpdated: 'Just now (Live GPS)',
-          currentAddress: geocoded.displayName,
+          currentAddress: friendlyName,
         },
       }));
 
@@ -577,6 +602,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setWeatherData(w);
     });
 
+    // If initial location has coordinate strings or placeholder names, re-geocode in background
+    if (isCoordinateString(locationData.displayName) && locationData.coordinates) {
+      reverseGeocode(locationData.coordinates.lat, locationData.coordinates.lng).then((geocoded) => {
+        const cleanName = formatFriendlyLocation({
+          ...locationData,
+          displayName: geocoded.displayName,
+          city: geocoded.city,
+          state: geocoded.state,
+        });
+        setLocationData((prev) => {
+          const updated: LocationData = {
+            ...prev,
+            displayName: cleanName,
+            city: geocoded.city && !isCoordinateString(geocoded.city) ? geocoded.city : cleanName.split(',')[0].trim(),
+            state: geocoded.state || prev.state,
+          };
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('sanjivni_saved_location', JSON.stringify(updated));
+          }
+          return updated;
+        });
+      });
+    }
+
     if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
       navigator.permissions
         .query({ name: 'geolocation' as PermissionName })
@@ -590,7 +639,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           };
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, []);
 
@@ -699,6 +748,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (typeof window !== 'undefined') {
       localStorage.setItem('smriti_region', region);
     }
+
+    // If live GPS is not active, update default location & weather to the selected region capital
+    const cap = NER_STATE_CAPITALS[region];
+    if (cap && !locationData.isLiveGps) {
+      const updatedLoc: LocationData = {
+        coordinates: { lat: cap.lat, lng: cap.lng },
+        displayName: cap.displayName,
+        city: cap.city,
+        state: cap.state,
+        permission: locationData.permission,
+        isLiveGps: false,
+      };
+      setLocationData(updatedLoc);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sanjivni_saved_location', JSON.stringify(updatedLoc));
+      }
+      fetchLiveWeather(cap.lat, cap.lng).then(setWeatherData);
+    }
   };
 
   const t = (key: string): string => {
@@ -776,6 +843,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (role === 'patient') {
       setUserRole('patient');
       setModeState('patient');
+      if (code) {
+        setConnectionCode(code);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('smriti_conn_code', code);
+        }
+      }
       if (typeof window !== 'undefined') {
         localStorage.setItem('smriti_user_role', 'patient');
       }
@@ -787,6 +860,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUserRole('caregiver');
         setIsPaired(true);
         setModeState('caregiver');
+        if (code) {
+          setConnectionCode(code);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('smriti_conn_code', code);
+          }
+        }
         if (typeof window !== 'undefined') {
           localStorage.setItem('smriti_user_role', 'caregiver');
           localStorage.setItem('smriti_is_paired', 'true');

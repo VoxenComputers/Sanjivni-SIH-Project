@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { getLocaleCode, getLocalizedDayName } from '../../../utils/i18n';
 import { SpeechButton } from '../../common/SpeechButton';
+import { formatFriendlyLocation } from '../../../utils/locationWeather';
 import {
   Sun,
   CloudSun,
@@ -71,8 +72,11 @@ export const DailySnapshot: React.FC = () => {
     return () => clearInterval(interval);
   }, [language]);
 
+  // Format clean human-readable location (never raw coordinates)
+  const friendlyLocation = formatFriendlyLocation(locationData);
+
   // Dynamic TTS Narration incorporating real detected location, live weather & current time
-  const spokenMessage = `${t('todayOrientation')}: ${dayName}, ${currentDate}. ${t('currentTime')}: ${currentTime}. ${t('currentLocation')}: ${locationData.displayName}. ${t('weather')}: ${weatherData.temperature} degrees Celsius, ${weatherData.condition}. ${t('orientationReassurance')}`;
+  const spokenMessage = `${t('todayOrientation')}: ${dayName}, ${currentDate}. ${t('currentTime')}: ${currentTime}. ${t('currentLocation')}: ${friendlyLocation}. ${t('weather')}: ${weatherData.temperature} degrees Celsius, ${weatherData.condition}. ${t('orientationReassurance')}`;
 
   // Helper for choosing dynamic weather icons
   const renderWeatherIcon = () => {
@@ -107,8 +111,8 @@ export const DailySnapshot: React.FC = () => {
             <MapPin className="w-4 h-4" />
           </div>
 
-          <span className="truncate" title={locationData.displayName}>
-            {locationData.displayName}
+          <span className="truncate" title={friendlyLocation}>
+            {friendlyLocation}
           </span>
 
           {/* GPS Live Status Chip */}

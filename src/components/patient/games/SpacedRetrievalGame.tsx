@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { SPHERICAL_TRIVIA_QUESTIONS, TriviaQuestion } from '../../../utils/nerData';
+import React, { useState, useMemo } from 'react';
+import { SPHERICAL_TRIVIA_QUESTIONS, TriviaQuestion, getRegionQuestions, NERStateId } from '../../../utils/nerData';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
+import { normalizeRegionId } from '../../../utils/assetManager';
 import { soundFx } from '../../../utils/audio';
 import { speechSynth } from '../../../utils/speech';
 import confetti from 'canvas-confetti';
@@ -12,16 +14,39 @@ interface SpacedRetrievalGameProps {
 }
 
 export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack }) => {
-  const { recordGameCompletion } = useApp();
+  const { user } = useAuth();
+  const { recordGameCompletion, selectedRegion } = useApp();
+
+  const rawRegion = user?.user_metadata?.region || (user as any)?.region || selectedRegion || 'assam';
+  const safeRegion = normalizeRegionId(rawRegion);
+  const stateKey = (safeRegion === 'arunachal-pradesh' ? 'arunachal' : safeRegion) as NERStateId;
+  const formattedStateName = safeRegion.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const questions: TriviaQuestion[] = useMemo(() => {
+    const regional = getRegionQuestions(stateKey);
+    const converted: TriviaQuestion[] = regional.map((q) => ({
+      id: q.id,
+      question: `Which cultural landmark from ${q.stateName} is described here?`,
+      subtext: q.description,
+      photoUrl: q.imageUrl,
+      options: q.options,
+      correctAnswer: q.correctAnswer,
+      explanation: `${q.name}: ${q.funFact}`,
+      audioPrompt: `${q.name}. ${q.description}. ${q.funFact}`,
+    }));
+    return [...SPHERICAL_TRIVIA_QUESTIONS, ...converted];
+  }, [stateKey]);
+
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isAnswerChecked, setIsAnswerChecked] = useState<boolean>(false);
   const [score, setScore] = useState<number>(0);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
 
-  const currentQ: TriviaQuestion = SPHERICAL_TRIVIA_QUESTIONS[currentIndex];
+  const currentQ: TriviaQuestion = questions[currentIndex] || questions[0];
 
   const handleSpeakQuestion = () => {
+    if (!currentQ) return;
     soundFx.playClickSound();
     speechSynth.speak(
       `${currentQ.question} ${currentQ.subtext}`
@@ -35,7 +60,7 @@ export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack
   };
 
   const handleCheckAnswer = () => {
-    if (!selectedOption || isAnswerChecked) return;
+    if (!selectedOption || isAnswerChecked || !currentQ) return;
     setIsAnswerChecked(true);
 
     const isCorrect = selectedOption === currentQ.correctAnswer;
@@ -53,7 +78,7 @@ export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack
 
   const handleNext = () => {
     soundFx.playClickSound();
-    if (currentIndex + 1 < SPHERICAL_TRIVIA_QUESTIONS.length) {
+    if (currentIndex + 1 < questions.length) {
       setCurrentIndex((prev) => prev + 1);
       setSelectedOption(null);
       setIsAnswerChecked(false);
@@ -73,9 +98,9 @@ export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack
       }
 
       recordGameCompletion(
-        'Spaced Retrieval Trivia',
-        score + (selectedOption === currentQ.correctAnswer ? 20 : 0),
-        SPHERICAL_TRIVIA_QUESTIONS.length,
+        `Spaced Retrieval (${formattedStateName})`,
+        score + (selectedOption === currentQ?.correctAnswer ? 20 : 0),
+        questions.length,
         60,
         100
       );
@@ -106,14 +131,14 @@ export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack
         {/* Progress Bar */}
         <div className="flex-1 max-w-xs mx-4">
           <div className="flex justify-between text-xs font-black text-stone-600 mb-1">
-            <span>Question {currentIndex + 1} of {SPHERICAL_TRIVIA_QUESTIONS.length}</span>
+            <span>Question {currentIndex + 1} of {questions.length}</span>
             <span>{score} Pts</span>
           </div>
           <div className="w-full h-3.5 bg-stone-200 rounded-full overflow-hidden border border-stone-300">
             <div
               className="h-full bg-brand-green transition-all duration-300 rounded-full"
               style={{
-                width: `${((currentIndex + (isAnswerChecked ? 1 : 0)) / SPHERICAL_TRIVIA_QUESTIONS.length) * 100}%`,
+                width: `${((currentIndex + (isAnswerChecked ? 1 : 0)) / questions.length) * 100}%`,
               }}
             />
           </div>
@@ -136,10 +161,10 @@ export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack
             <Award className="w-10 h-10" />
           </div>
           <h3 className="text-3xl sm:text-4xl font-black text-brand-dark mb-2">
-            Wonderful Memory, Koka! (বৰ ধুনীয়া!)
+            Wonderful Memory, Koka!
           </h3>
           <p className="text-lg sm:text-xl font-bold text-stone-700 mb-6">
-            You completed today’s family and cultural trivia with a fantastic score of {score} points!
+            You completed today’s family and {formattedStateName} cultural trivia with a fantastic score of {score} points!
           </p>
 
           <div className="flex items-center justify-center gap-4 flex-wrap">
@@ -164,7 +189,7 @@ export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack
           {/* Question Prompt */}
           <div>
             <span className="inline-block bg-brand-green-light text-brand-green-dark font-black text-xs sm:text-sm px-3 py-1 rounded-full uppercase tracking-wider mb-2 border border-green-300">
-              Personalized Memory Trivia • স্মৃতি পৰীক্ষা
+              Personalized Memory Trivia • {formattedStateName}
             </span>
             <h3 className="text-2xl sm:text-3xl lg:text-4xl font-black text-brand-dark tracking-tight leading-snug">
               {currentQ.question}
@@ -250,7 +275,7 @@ export const SpacedRetrievalGame: React.FC<SpacedRetrievalGameProps> = ({ onBack
       {!isCompleted && (
         <div className="max-w-2xl mx-auto bg-stone-100 border-2 border-stone-300 rounded-3xl p-4">
           <Mascot
-            message="Take your time Koka. Remembering family and Assam brings peaceful joy to the heart."
+            message={`Take your time Koka. Remembering family and ${formattedStateName} brings peaceful joy to the heart.`}
             mood="gentle"
             size="small"
           />

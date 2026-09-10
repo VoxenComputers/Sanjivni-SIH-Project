@@ -2,8 +2,8 @@ import { supabase } from './supabase';
 import { FamilyMember, RoutineTask } from '../context/AppContext';
 
 export interface PatientProfileRecord {
-  id: string;
-  role: 'patient' | 'caregiver';
+  id?: string;
+  role?: 'patient' | 'caregiver';
   username: string;
   date_of_birth?: string | null;
   phone_number?: string | null;
@@ -16,6 +16,11 @@ export interface PatientProfileRecord {
   is_deleted?: boolean;
   created_at?: string;
 }
+
+export const isValidUuid = (id?: string | null): boolean => {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+};
 
 /**
  * 1. Fetch User Profile from Supabase 'profiles' to verify existing role
@@ -47,7 +52,7 @@ export const fetchUserProfile = async (userId: string): Promise<PatientProfileRe
  * 2. Supabase Storage Media Upload with Resilient Offline / Demo Fallback
  */
 export const uploadMediaFile = async (
-  file: File, 
+  file: File,
   folder: 'patients' | 'caregivers' | 'family' = 'family'
 ): Promise<string> => {
   try {
@@ -109,7 +114,6 @@ export const createPatientProfile = async (
   connectionCode: string
 ): Promise<{ success: boolean; data?: PatientProfileRecord; error?: string }> => {
   const profilePayload: PatientProfileRecord = {
-    id: userId,
     role: 'patient',
     username: name.trim(),
     date_of_birth: dateOfBirth,
@@ -119,27 +123,44 @@ export const createPatientProfile = async (
     created_at: new Date().toISOString(),
   };
 
+  if (isValidUuid(userId)) {
+    profilePayload.id = userId;
+  }
+
   // Always mirror in localStorage for offline Hackathon guarantee
   if (typeof window !== 'undefined') {
-    localStorage.setItem('smriti_patient_profile', JSON.stringify(profilePayload));
+    localStorage.setItem('smriti_patient_profile', JSON.stringify({ ...profilePayload, id: userId }));
     localStorage.setItem('smriti_conn_code', connectionCode);
     localStorage.setItem('smriti_user_role', 'patient');
     localStorage.setItem('smriti_is_paired', 'false');
   }
 
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert(profilePayload, { onConflict: 'id' })
-      .select()
-      .maybeSingle();
+    let res;
+    if (isValidUuid(userId)) {
+      res = await supabase
+        .from('profiles')
+        .upsert(profilePayload, { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+    } else {
+      res = await supabase
+        .from('profiles')
+        .insert(profilePayload)
+        .select()
+        .maybeSingle();
+    }
 
-    if (error) {
-      console.warn('[Supabase DB] createPatientProfile warning (operating in local mode):', error.message);
+    if (res.error) {
+      console.warn('[Supabase DB] createPatientProfile warning (operating in local mode):', res.error.message);
       return { success: true, data: profilePayload };
     }
 
-    return { success: true, data: (data as PatientProfileRecord) || profilePayload };
+    if (res.data?.id && typeof window !== 'undefined') {
+      localStorage.setItem('smriti_patient_profile', JSON.stringify(res.data));
+    }
+
+    return { success: true, data: (res.data as PatientProfileRecord) || profilePayload };
   } catch (err: any) {
     console.warn('[Supabase DB] createPatientProfile exception:', err);
     return { success: true, data: profilePayload };
@@ -161,10 +182,13 @@ export const checkPatientPairingStatus = async (
 
   try {
     let query = supabase.from('profiles').select('is_paired, caregiver_id');
-    if (patientId) {
+    if (patientId && isValidUuid(patientId)) {
       query = query.eq('id', patientId);
     } else if (connectionCode) {
-      query = query.eq('connection_code', connectionCode);
+      const cleanCode = connectionCode.trim().replace(/\D/g, '');
+      query = query.eq('connection_code', cleanCode || connectionCode.trim());
+    } else {
+      return { isPaired: false };
     }
 
     const { data, error } = await query.maybeSingle();
@@ -225,7 +249,35 @@ export const verifyAndLinkPatient = async (
     }
   }
 
-  // 3. Query Supabase 'profiles' table for matching patient connection code
+  // 3. Try PostgreSQL RPC Function (Bypasses RLS safely and pairs both sides atomically)
+  if (isValidUuid(caregiverId)) {
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('link_patient_with_code', {
+        p_connection_code: cleanCode,
+        p_caregiver_id: caregiverId,
+      });
+
+      if (!rpcError && rpcData) {
+        const res = typeof rpcData === 'string' ? JSON.parse(rpcData) : rpcData;
+        if (res.success) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('smriti_conn_code', cleanCode);
+            localStorage.setItem('smriti_is_paired', 'true');
+            localStorage.setItem('smriti_linked_patient_id', res.patient_id);
+          }
+          return {
+            success: true,
+            patientId: res.patient_id,
+            patientName: res.patient_name || 'Patient',
+          };
+        }
+      }
+    } catch (rpcEx) {
+      // fallback to direct table update below
+    }
+  }
+
+  // 4. Query Supabase 'profiles' table for matching patient connection code
   try {
     const { data: patientRecord, error } = await supabase
       .from('profiles')
@@ -240,25 +292,31 @@ export const verifyAndLinkPatient = async (
 
     if (patientRecord) {
       // Link patient to caregiver
-      await supabase
+      const { error: patientUpdateError } = await supabase
         .from('profiles')
         .update({
-          caregiver_id: caregiverId,
+          caregiver_id: isValidUuid(caregiverId) ? caregiverId : null,
           is_paired: true,
           updated_at: new Date().toISOString(),
         })
         .eq('id', patientRecord.id);
 
-      // Link caregiver to patient
-      await supabase
-        .from('profiles')
-        .upsert({
-          id: caregiverId,
-          role: 'caregiver',
-          linked_patient_id: patientRecord.id,
-          is_paired: true,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
+      if (patientUpdateError) {
+        console.warn('[Supabase DB] verifyAndLinkPatient patient update warning:', patientUpdateError.message);
+      }
+
+      // Link caregiver to patient (only if caregiverId is a valid UUID)
+      if (isValidUuid(caregiverId)) {
+        await supabase
+          .from('profiles')
+          .upsert({
+            id: caregiverId,
+            role: 'caregiver',
+            linked_patient_id: patientRecord.id,
+            is_paired: true,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+      }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('smriti_conn_code', cleanCode);

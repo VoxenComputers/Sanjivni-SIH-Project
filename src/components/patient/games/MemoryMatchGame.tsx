@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { NER_MEMORY_ITEMS, NERMemoryItem } from '../../../utils/nerData';
+import { getRegionItems, NERMemoryItem, NERStateId } from '../../../utils/nerData';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
+import { getGameAssetUrl, normalizeRegionId, getFallbackGameAssetUrl } from '../../../utils/assetManager';
 import { soundFx } from '../../../utils/audio';
 import confetti from 'canvas-confetti';
 import { RotateCcw, Award, Sparkles, ArrowLeft } from 'lucide-react';
 import { Mascot } from '../../common/Mascot';
+import { SpeechButton } from '../../common/SpeechButton';
 
 interface CardState {
   instanceId: string;
@@ -18,7 +21,14 @@ interface MemoryMatchGameProps {
 }
 
 export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
-  const { recordGameCompletion } = useApp();
+  const { user } = useAuth();
+  const { recordGameCompletion, selectedRegion, language, t } = useApp();
+
+  const rawRegion = user?.user_metadata?.region || (user as any)?.region || selectedRegion || 'assam';
+  const safeRegion = normalizeRegionId(rawRegion);
+  const stateKey = (safeRegion === 'arunachal-pradesh' ? 'arunachal' : safeRegion) as NERStateId;
+  const formattedStateName = safeRegion.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
   const [cards, setCards] = useState<CardState[]>([]);
   const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
   const [moves, setMoves] = useState<number>(0);
@@ -27,11 +37,13 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
   const [timerSeconds, setTimerSeconds] = useState<number>(0);
   const [isActive, setIsActive] = useState<boolean>(false);
 
-  // Initialize and shuffle 6 pairs (12 cards)
+  // Initialize and shuffle pairs for selected region (up to 6 pairs / 12 cards)
   const initializeGame = () => {
     soundFx.playClickSound();
+    const regionItems = getRegionItems(stateKey, language);
+    const selectedItems = regionItems.slice(0, 6);
     const pairs: CardState[] = [];
-    NER_MEMORY_ITEMS.forEach((item) => {
+    selectedItems.forEach((item) => {
       pairs.push({
         instanceId: `${item.id}-1`,
         item,
@@ -63,7 +75,7 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
 
   useEffect(() => {
     initializeGame();
-  }, []);
+  }, [safeRegion, selectedRegion, language]);
 
   // Timer tick
   useEffect(() => {
@@ -110,7 +122,8 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
           const nextMatches = matchesFound + 1;
           setMatchesFound(nextMatches);
 
-          if (nextMatches === NER_MEMORY_ITEMS.length) {
+          const totalPairs = Math.floor(cards.length / 2);
+          if (nextMatches === totalPairs && totalPairs > 0) {
             // GAME WON!
             handleVictory();
           }
@@ -145,109 +158,71 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
       // ignore
     }
 
+    const totalPairs = Math.floor(cards.length / 2);
     recordGameCompletion(
-      'Memory Match (NER)',
+      `Memory Match (${formattedStateName})`,
       100,
       moves + 1,
       timerSeconds,
-      Math.round((NER_MEMORY_ITEMS.length / (moves + 1)) * 100)
+      Math.round((totalPairs / (moves + 1)) * 100)
     );
   };
 
-  // Dedicated SVG Icons for the 6 NER items
+  // Render cultural item artwork with Supabase CDN image and graceful fallback
   const renderItemArtwork = (item: NERMemoryItem) => {
-    switch (item.id) {
-      case 'bihu_dhol':
-        return (
-          <svg viewBox="0 0 64 64" className="w-14 h-14 sm:w-16 sm:h-16">
-            {/* Drum Body */}
-            <ellipse cx="32" cy="18" rx="20" ry="8" fill="#F59E0B" stroke="#B45309" strokeWidth="2.5" />
-            <path d="M 12 18 L 16 46 Q 32 54 48 46 L 52 18" fill="#D97706" stroke="#B45309" strokeWidth="2.5" />
-            <ellipse cx="32" cy="46" rx="16" ry="6" fill="#F59E0B" stroke="#B45309" strokeWidth="2" />
-            {/* Red Gamosa accent */}
-            <path d="M 18 26 L 46 26" stroke="#DC2626" strokeWidth="3" />
-            <path d="M 22 36 L 42 36" stroke="#DC2626" strokeWidth="3" />
-          </svg>
-        );
-      case 'kaziranga_rhino':
-        return (
-          <svg viewBox="0 0 64 64" className="w-14 h-14 sm:w-16 sm:h-16">
-            <ellipse cx="34" cy="36" rx="20" ry="14" fill="#9CA3AF" stroke="#374151" strokeWidth="2.5" />
-            <circle cx="18" cy="30" r="10" fill="#9CA3AF" stroke="#374151" strokeWidth="2.5" />
-            <path d="M 10 26 Q 4 18 10 22 Z" fill="#F59E0B" stroke="#B45309" strokeWidth="2" />
-            <circle cx="16" cy="28" r="2" fill="#1F2937" />
-            <line x1="22" y1="48" x2="22" y2="58" stroke="#374151" strokeWidth="4" strokeLinecap="round" />
-            <line x1="42" y1="48" x2="42" y2="58" stroke="#374151" strokeWidth="4" strokeLinecap="round" />
-          </svg>
-        );
-      case 'hornbill_bird':
-        return (
-          <svg viewBox="0 0 64 64" className="w-14 h-14 sm:w-16 sm:h-16">
-            <circle cx="34" cy="30" r="14" fill="#1F2937" stroke="#111827" strokeWidth="2" />
-            {/* Massive Yellow/Red Casque Bill */}
-            <path d="M 24 24 Q 4 16 12 34 L 26 32 Z" fill="#F59E0B" stroke="#B45309" strokeWidth="2" />
-            <path d="M 20 20 Q 8 16 14 26 Z" fill="#DC2626" />
-            <circle cx="30" cy="26" r="2.5" fill="#DC2626" />
-            <path d="M 38 40 Q 48 54 36 60 Q 32 50 36 42 Z" fill="#F3F4F6" stroke="#374151" strokeWidth="2" />
-          </svg>
-        );
-      case 'muga_silk':
-        return (
-          <svg viewBox="0 0 64 64" className="w-14 h-14 sm:w-16 sm:h-16">
-            <rect x="14" y="14" width="36" height="36" rx="8" fill="#FEF08A" stroke="#CA8A04" strokeWidth="2.5" />
-            {/* Traditional Kingkhap pattern */}
-            <polygon points="32,20 40,32 32,44 24,32" fill="#EA580C" />
-            <circle cx="32" cy="32" r="3" fill="#FEF08A" />
-            <path d="M 18 20 L 46 44 M 46 20 L 18 44" stroke="#CA8A04" strokeWidth="1.5" strokeDasharray="3,3" />
-          </svg>
-        );
-      case 'assam_tea':
-        return (
-          <svg viewBox="0 0 64 64" className="w-14 h-14 sm:w-16 sm:h-16">
-            <path d="M 32 52 Q 32 32 16 22 Q 30 18 32 40 Z" fill="#22C55E" stroke="#15803D" strokeWidth="2.5" />
-            <path d="M 32 52 Q 32 30 48 18 Q 36 16 32 38 Z" fill="#16A34A" stroke="#15803D" strokeWidth="2.5" />
-            <path d="M 32 38 Q 32 12 32 8" stroke="#15803D" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-        );
-      case 'loktak_lake':
-        return (
-          <svg viewBox="0 0 64 64" className="w-14 h-14 sm:w-16 sm:h-16">
-            <rect x="8" y="12" width="48" height="40" rx="10" fill="#BAE6FD" stroke="#0284C7" strokeWidth="2" />
-            {/* Circular Floating Phumdis */}
-            <circle cx="24" cy="32" r="10" fill="#4ADE80" stroke="#15803D" strokeWidth="2" />
-            <circle cx="42" cy="26" r="7" fill="#22C55E" stroke="#15803D" strokeWidth="2" />
-            <path d="M 12 44 Q 24 40 36 44 T 52 44" stroke="#0284C7" strokeWidth="2" fill="none" />
-          </svg>
-        );
-      default:
-        return null;
-    }
+    const fileName = item.imageUrl ? item.imageUrl.split('/').pop() || '' : '';
+    const assetUrl = fileName ? getGameAssetUrl('picture-match', safeRegion, fileName) : item.imageUrl;
+
+    return (
+      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden flex items-center justify-center bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 shadow-inner">
+        <img
+          src={assetUrl}
+          alt={item.name}
+          className="w-full h-full object-cover rounded-xl"
+          onError={(e) => {
+            console.error('Failed to load memory card image:', e.currentTarget.src);
+            e.currentTarget.onerror = null;
+            if (item.imageUrl && e.currentTarget.src !== item.imageUrl) {
+              e.currentTarget.src = item.imageUrl;
+            } else {
+              e.currentTarget.src = getFallbackGameAssetUrl('picture-match');
+            }
+          }}
+        />
+      </div>
+    );
   };
 
   return (
     <div className="space-y-4 sm:space-y-5 pb-6">
       {/* Top Controls Bar */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 border-stone-300 bg-white hover:bg-stone-100 font-extrabold text-stone-700 shadow-duo-neutral active:translate-y-1"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Back to Games</span>
-        </button>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 font-extrabold text-stone-700 dark:text-stone-200 shadow-duo-neutral active:translate-y-1 transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>Back to Games</span>
+          </button>
+          <SpeechButton
+            text={`Memory Match Pairs for ${formattedStateName}. ${t('memoryMatchDesc') || 'Find matching cultural cards from your region to exercise focus and recall.'}`}
+            size="md"
+          />
+        </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <div className="text-right">
-            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider block">Moves</span>
-            <span className="text-xl sm:text-2xl font-black text-brand-dark">{moves}</span>
+            <span className="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider block">Moves</span>
+            <span className="text-xl sm:text-2xl font-black text-stone-900 dark:text-white">{moves}</span>
           </div>
-          <div className="text-right border-l-2 border-stone-200 pl-4">
-            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider block">Time</span>
-            <span className="text-xl sm:text-2xl font-black text-brand-dark">{timerSeconds}s</span>
+          <div className="text-right border-l-2 border-stone-200 dark:border-stone-700 pl-3 sm:pl-4">
+            <span className="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider block">Time</span>
+            <span className="text-xl sm:text-2xl font-black text-stone-900 dark:text-white">{timerSeconds}s</span>
           </div>
           <button
             onClick={initializeGame}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border-2 border-stone-300 bg-white hover:bg-stone-100 text-stone-700 font-extrabold shadow-duo-neutral active:translate-y-1"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border-2 border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 font-extrabold shadow-duo-neutral active:translate-y-1 transition-colors cursor-pointer"
             title="Restart game"
           >
             <RotateCcw className="w-5 h-5" />
@@ -258,51 +233,53 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
 
       {/* Encouragement Mascot or Victory Panel */}
       {isWon ? (
-        <div className="duo-card border-brand-green border-b-6 border-b-brand-green-dark bg-green-50 p-6 sm:p-8 text-center animate-tactile-bounce">
-          <div className="w-16 h-16 rounded-3xl bg-brand-green text-white flex items-center justify-center mx-auto mb-3 shadow-duo-green">
+        <div className="duo-card border-emerald-500 border-b-6 border-b-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 p-6 sm:p-8 text-center animate-tactile-bounce">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-600 text-white flex items-center justify-center mx-auto mb-3 shadow-duo-green">
             <Award className="w-10 h-10" />
           </div>
-          <h3 className="text-3xl sm:text-4xl font-black text-brand-dark mb-2">
-            Fantastic Job, Koka! (অসাধাৰণ!)
+          <h3 className="text-3xl sm:text-4xl font-black text-stone-900 dark:text-white mb-2">
+            Fantastic Job, Koka!
           </h3>
-          <p className="text-lg sm:text-xl font-bold text-stone-700 max-w-lg mx-auto mb-6">
-            You matched all North Eastern cultural heritage cards in {moves} moves and {timerSeconds} seconds!
+          <p className="text-lg sm:text-xl font-bold text-stone-700 dark:text-stone-300 max-w-lg mx-auto mb-6">
+            You matched all {formattedStateName} cultural heritage cards in {moves} moves and {timerSeconds} seconds!
           </p>
 
           <div className="flex items-center justify-center gap-4 flex-wrap">
             <button
               onClick={initializeGame}
-              className="duo-btn duo-btn-green text-lg px-8 py-3.5"
+              className="duo-btn duo-btn-green text-lg px-8 py-3.5 cursor-pointer"
             >
               <RotateCcw className="w-6 h-6" />
               <span>Play Again!</span>
             </button>
             <button
               onClick={onBack}
-              className="duo-btn duo-btn-white text-lg px-8 py-3.5"
+              className="duo-btn duo-btn-white text-lg px-8 py-3.5 cursor-pointer"
             >
               <span>Back to Games Hub</span>
             </button>
           </div>
         </div>
       ) : (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-4">
+        <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-4">
           <Mascot
-            message="Tap two cards to find their match! Remember where each Assam item is hidden."
+            message={`Tap two cards to find their match! Remember where each ${formattedStateName} item is hidden.`}
             mood="happy"
             size="small"
           />
           <div className="text-right flex-shrink-0">
-            <span className="text-xs font-bold text-amber-800 uppercase tracking-wider block">Pairs Matched</span>
-            <span className="text-2xl sm:text-3xl font-black text-brand-amber-dark">
-              {matchesFound} / {NER_MEMORY_ITEMS.length}
+            <span className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">Pairs Matched</span>
+            <span className="text-2xl sm:text-3xl font-black text-amber-900 dark:text-amber-100">
+              {matchesFound} / {Math.floor(cards.length / 2)}
             </span>
           </div>
         </div>
       )}
 
-      {/* The 12-Card Grid (4 cols on desktop, 3 on mobile) */}
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 sm:gap-4 max-w-3xl mx-auto">
+      {/* Dynamic Card Grid (4 cols for 8-12 cards on desktop, 3 cols on mobile) */}
+      <div className={`grid gap-3 sm:gap-4 max-w-3xl mx-auto ${
+        cards.length <= 8 ? 'grid-cols-2 sm:grid-cols-4 max-w-2xl' : 'grid-cols-3 sm:grid-cols-4'
+      }`}>
         {cards.map((card, idx) => {
           const isRevealed = card.isFlipped || card.isMatched;
 
@@ -325,32 +302,32 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
                   isRevealed ? 'rotate-y-180' : ''
                 } ${
                   card.isMatched
-                    ? 'border-brand-green bg-green-50 shadow-duo-green'
+                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 shadow-duo-green'
                     : isRevealed
-                    ? 'border-brand-amber bg-white shadow-duo-amber'
-                    : 'border-stone-300 bg-white shadow-duo-neutral hover:border-brand-green'
+                    ? 'border-amber-500 bg-white dark:bg-stone-800 shadow-duo-amber'
+                    : 'border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-duo-neutral hover:border-emerald-500'
                 }`}
               >
                 {/* Back Face (When Hidden) */}
-                <div className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-2 rounded-2xl sm:rounded-3xl bg-[#FAF8F5]">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-brand-green-light border-2 border-brand-green flex items-center justify-center text-brand-green-dark">
+                <div className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-2 rounded-2xl sm:rounded-3xl bg-[#FAF8F5] dark:bg-[#1C1917]">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
                     <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
                   </div>
-                  <span className="text-xs sm:text-sm font-black text-stone-600 mt-2 text-center leading-none">
-                    মন-স্মৃতি
+                  <span className="text-xs sm:text-sm font-black text-stone-600 dark:text-stone-300 mt-2 text-center leading-none">
+                    SANJIVNI
                   </span>
                 </div>
 
                 {/* Front Face (When Flipped) */}
-                <div className="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-between p-2 sm:p-3 rounded-2xl sm:rounded-3xl bg-white text-center">
+                <div className="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-between p-2 sm:p-3 rounded-2xl sm:rounded-3xl bg-white dark:bg-stone-800 text-center">
                   <div className="flex-1 flex items-center justify-center">
                     {renderItemArtwork(card.item)}
                   </div>
                   <div className="w-full">
-                    <p className="text-xs sm:text-sm font-black text-brand-dark leading-tight line-clamp-1">
+                    <p className="text-xs sm:text-sm font-black text-stone-900 dark:text-white leading-tight line-clamp-1">
                       {card.item.name}
                     </p>
-                    <p className="text-[10px] sm:text-xs font-extrabold text-stone-500 line-clamp-1">
+                    <p className="text-[10px] sm:text-xs font-extrabold text-stone-500 dark:text-stone-400 line-clamp-1">
                       {card.item.localName}
                     </p>
                   </div>

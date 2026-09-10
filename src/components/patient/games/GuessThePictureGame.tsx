@@ -3,7 +3,7 @@ import confetti from 'canvas-confetti';
 import { soundFx } from '../../../utils/audio';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
-import { getGameAssetUrl } from '../../../utils/assetManager';
+import { getGameAssetUrl, REGION_ASSETS, normalizeRegionId, getFallbackGameAssetUrl } from '../../../utils/assetManager';
 import { SpeechButton } from '../../common/SpeechButton';
 import { Mascot } from '../../common/Mascot';
 import { ArrowLeft, RotateCcw, CheckCircle2, Award, ChevronRight, Sparkles, AlertCircle } from 'lucide-react';
@@ -23,21 +23,7 @@ interface QuestionItem {
   correctAnswer: string;
 }
 
-const REGION_ASSETS: Record<string, string[]> = {
-  'arunachal-pradesh': ['arunachal-tawang.jpg', 'arunachal-hornbill.jpg', 'arunachal-sela-pass.jpg', 'arunachal-ziro-valley.jpg'],
-  'manipur': ['manipur-loktak.jpg', 'manipur-sangai.jpg', 'manipur-kangla.jpg', 'manipur-raas-leela.jpg'],
-  'meghalaya': ['meghalaya-root-bridge.jpg', 'meghalaya-nohkalikai.jpg', 'meghalaya-dawki.jpg', 'meghalaya-mawlynnong.jpg'],
-  'assam': [
-    'assam-bihu-dhol.jpg',
-    'assam-kamakhya.jpg',
-    'assam-majuli.jpg',
-    'assam-muga-silk.jpg',
-    'assam-rhino.jpg',
-    'assam-tea.jpg',
-  ] 
-};
-
-// Cultural metadata for authentic quiz descriptions and fun facts
+// Cultural metadata for authentic quiz descriptions and fun facts across all 8 North-Eastern states
 const CULTURAL_METADATA: Record<string, { name: string; description: string; funFact: string }> = {
   // Meghalaya
   'meghalaya-root-bridge.jpg': {
@@ -133,16 +119,104 @@ const CULTURAL_METADATA: Record<string, { name: string; description: string; fun
     description: 'Sprawling emerald tea estates producing full-bodied, brisk malty black tea enjoyed worldwide.',
     funFact: 'Assam is the single largest contiguous tea-growing region on Earth, cultivated since the 1830s.',
   },
+  // Mizoram
+  'mizoram-cheraw.jpg': {
+    name: 'Cheraw Bamboo Dance',
+    description: 'Rhythmic folk dance where performers step in and out of clapping horizontal bamboo staves.',
+    funFact: 'Cheraw holds the world record for the largest synchronized bamboo dance performance.',
+  },
+  'mizoram-reiek.jpg': {
+    name: 'Reiek Heritage Peak',
+    description: 'Towering cliff summit overlooking scenic Aizawl hills and a traditional model Mizo village.',
+    funFact: 'The peak offers a panoramic view of the lush valleys and plains reaching all the way to Bangladesh!',
+  },
+  'mizoram-puan.jpg': {
+    name: 'Puan Handwoven Textile',
+    description: 'Intricately patterned handwoven shawl with bold traditional stripes, the pride of Mizo weavers.',
+    funFact: 'Puan Chei is worn on grand festive occasions like Chapchar Kut and wedding ceremonies.',
+  },
+  'mizoram-vantawng.jpg': {
+    name: 'Vantawng Falls',
+    description: 'Highest two-tiered waterfall in Mizoram plunging 750 feet amidst thick bamboo forests.',
+    funFact: 'Surrounded by lush bamboo groves, it is named after legendary swimmer Vantawnga.',
+  },
+  // Nagaland
+  'nagaland-hornbill-festival.jpg': {
+    name: 'Hornbill Festival Kisama',
+    description: 'Grand cultural celebration bringing together all 16 Naga tribes in music, dance, and crafts.',
+    funFact: 'Celebrated every December at the Naga Heritage Village Kisama, it is known as the "Festival of Festivals".',
+  },
+  'nagaland-dzukou.jpg': {
+    name: 'Dzukou Valley of Lilies',
+    description: 'Enchanting valley of rolling emerald green hillocks and rare endemic Dzukou lilies.',
+    funFact: 'The rare Dzukou lily grows nowhere else on Earth except in this high-altitude pristine sanctuary.',
+  },
+  'nagaland-naga-shawl.jpg': {
+    name: 'Naga Tribal Warrior Shawl',
+    description: 'Distinctive geometric handloom textile woven with symbolic warrior motifs and natural dyes.',
+    funFact: 'Each distinct stripe pattern and color combination identifies the specific tribe and warrior clan.',
+  },
+  'nagaland-khonoma.jpg': {
+    name: 'Khonoma Green Village',
+    description: 'Historic Angami settlement famous for community forest protection and terraced agriculture.',
+    funFact: 'Khonoma was officially declared India’s first green village for banning all illegal logging and hunting.',
+  },
+  // Sikkim
+  'sikkim-kanchenjunga.jpg': {
+    name: 'Mount Kanchenjunga',
+    description: 'World’s 3rd highest mountain peak (28,169 ft), venerated as the sacred guardian deity of Sikkim.',
+    funFact: 'Out of deep reverence, mountaineering expeditions historically stopped just short of the sacred summit.',
+  },
+  'sikkim-rumtek.jpg': {
+    name: 'Rumtek Monastery',
+    description: 'Grand golden Tibetan Buddhist Gompa perched near Gangtok, seat of the Gyalwang Karmapa.',
+    funFact: 'Rumtek houses some of the rarest religious Buddhist scriptures and sacred golden stupas in the world.',
+  },
+  'sikkim-red-panda.jpg': {
+    name: 'Himalayan Red Panda',
+    description: 'Gentle arboreal mammal with rust-red fur and striped tail, thriving in rhododendron forests.',
+    funFact: 'The gentle Red Panda is the state animal of Sikkim and spends most of its life high up in bamboo treetops.',
+  },
+  'sikkim-gurudongmar.jpg': {
+    name: 'Gurudongmar Sacred Lake',
+    description: 'One of the highest alpine lakes in the world (17,800 ft), sacred to both Buddhists and Sikhs.',
+    funFact: 'Even during freezing Himalayan winters, a sacred section of the lake never freezes completely!',
+  },
+  // Tripura
+  'tripura-ujjayanta.jpg': {
+    name: 'Ujjayanta Royal Palace',
+    description: 'Grand neoclassical white palace built in 1901 by Maharaja Radha Kishore Manikya in Agartala.',
+    funFact: 'Nobel Laureate Rabindranath Tagore was a frequent honored guest and gave this palace its royal name.',
+  },
+  'tripura-neermahal.jpg': {
+    name: 'Neermahal Water Palace',
+    description: 'Picturesque royal summer fortress palace erected in the middle of Lake Rudrasagar.',
+    funFact: 'It is one of only two royal floating water palaces in all of India!',
+  },
+  'tripura-unakoti.jpg': {
+    name: 'Unakoti Rock Reliefs',
+    description: 'Colossal 7th-century rock-cut carvings of Lord Shiva carved along forested hillsides.',
+    funFact: 'According to legend, there are 99,99,999 (one less than a crore) sacred stone carvings hidden here.',
+  },
+  'tripura-bamboo-craft.jpg': {
+    name: 'Tripura Bamboo & Cane Crafts',
+    description: 'Masterfully handwoven bamboo partitions, lamps, and furniture famed for sustainable craftsmanship.',
+    funFact: 'Tripura produces some of the finest handmade bamboo products and flutes in Asia.',
+  },
+  'tripura-hojagiri.jpg': {
+    name: 'Hojagiri Reang Folk Dance',
+    description: 'Remarkable acrobatic folk dance balancing upon earthen pitchers and brass lamps.',
+    funFact: 'Dancers balance brass plates and bottles on their heads while moving rhythmically only from the waist down.',
+  },
 };
 
 export const GuessThePictureGame: React.FC<GuessThePictureGameProps> = ({ onBack }) => {
   const { user } = useAuth();
   const { recordGameCompletion, t, selectedRegion } = useApp();
 
-  // Robust region sanitization
+  // Robust region sanitization supporting all 8 North-Eastern states
   const rawRegion = user?.user_metadata?.region || (user as any)?.region || selectedRegion || 'assam';
-  const normalized = String(rawRegion).toLowerCase().trim().replace(/\s+/g, '-');
-  const safeRegion = normalized === 'arunachal' ? 'arunachal-pradesh' : (REGION_ASSETS[normalized] ? normalized : 'assam');
+  const safeRegion = normalizeRegionId(rawRegion);
 
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -328,7 +402,7 @@ export const GuessThePictureGame: React.FC<GuessThePictureGameProps> = ({ onBack
                 onError={(e) => {
                   console.error('Failed to load image:', e.currentTarget.src);
                   e.currentTarget.onerror = null;
-                  e.currentTarget.src = '/vite.svg';
+                  e.currentTarget.src = getFallbackGameAssetUrl('guess-the-picture');
                 }}
               />
               <div className="absolute top-3 left-3 bg-stone-900/75 backdrop-blur-xs text-white px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5">

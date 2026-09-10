@@ -89,7 +89,16 @@ CREATE POLICY "Users can insert own profile"
 DROP POLICY IF EXISTS "Caregiver can update linked patient" ON public.profiles;
 CREATE POLICY "Caregiver can update linked patient"
     ON public.profiles FOR UPDATE
-    USING (auth.uid() = caregiver_id OR auth.uid() = id);
+    USING (
+        auth.uid() = caregiver_id 
+        OR auth.uid() = id 
+        OR (role = 'patient' AND caregiver_id IS NULL)
+    )
+    WITH CHECK (
+        auth.uid() = caregiver_id 
+        OR auth.uid() = id 
+        OR (role = 'patient' AND caregiver_id IS NULL)
+    );
 
 -- Family Members Policies
 DROP POLICY IF EXISTS "Family members viewable by patient and caregiver" ON public.family_members;
@@ -184,3 +193,63 @@ $$;
 
 -- Grant execution to authenticated users
 GRANT EXECUTE ON FUNCTION public.delete_user_account() TO authenticated;
+
+-- ==============================================================================
+-- 8. Atomic Stored Function to Link Caregiver and Patient by Connection Code
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.link_patient_with_code(
+  p_connection_code TEXT,
+  p_caregiver_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_patient RECORD;
+  v_clean_code TEXT;
+BEGIN
+  v_clean_code := TRIM(p_connection_code);
+
+  -- 1. Find patient with matching 6-digit connection code
+  SELECT * INTO v_patient
+  FROM public.profiles
+  WHERE role = 'patient'
+    AND connection_code = v_clean_code
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Invalid 6-digit connection code. Please verify the code displayed on the patient screen.'
+    );
+  END IF;
+
+  -- 2. Link patient to caregiver
+  UPDATE public.profiles
+  SET 
+    caregiver_id = p_caregiver_id,
+    is_paired = true,
+    updated_at = NOW()
+  WHERE id = v_patient.id;
+
+  -- 3. Upsert caregiver profile
+  INSERT INTO public.profiles (id, role, linked_patient_id, is_paired, updated_at)
+  VALUES (p_caregiver_id, 'caregiver', v_patient.id, true, NOW())
+  ON CONFLICT (id) DO UPDATE
+  SET 
+    linked_patient_id = v_patient.id,
+    is_paired = true,
+    updated_at = NOW();
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'patient_id', v_patient.id,
+    'patient_name', COALESCE(v_patient.username, 'Patient')
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.link_patient_with_code(TEXT, UUID) TO authenticated, anon;
+

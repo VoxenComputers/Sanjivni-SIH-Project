@@ -3,10 +3,10 @@ import confetti from 'canvas-confetti';
 import { soundFx } from '../../../utils/audio';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
-import { getGameAssetUrl } from '../../../utils/assetManager';
+import { getGameAssetUrl, REGION_ASSETS, normalizeRegionId, getFallbackGameAssetUrl } from '../../../utils/assetManager';
 import { SpeechButton } from '../../common/SpeechButton';
 import { Mascot } from '../../common/Mascot';
-import { ArrowLeft, RotateCcw, CheckCircle2, Sparkles, AlertCircle } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Award, CheckCircle2, XCircle, Sparkles, AlertCircle } from 'lucide-react';
 
 interface MatchTheOrderGameProps {
   onBack: () => void;
@@ -19,50 +19,60 @@ interface OrderItem {
   imageUrl: string;
 }
 
-const REGION_ASSETS: Record<string, string[]> = {
-  'arunachal-pradesh': ['arunachal-tawang.jpg', 'arunachal-hornbill.jpg', 'arunachal-sela-pass.jpg', 'arunachal-ziro-valley.jpg'],
-  'manipur': ['manipur-loktak.jpg', 'manipur-sangai.jpg', 'manipur-kangla.jpg', 'manipur-raas-leela.jpg'],
-  'meghalaya': ['meghalaya-root-bridge.jpg', 'meghalaya-nohkalikai.jpg', 'meghalaya-dawki.jpg', 'meghalaya-mawlynnong.jpg'],
-  'assam': [
-    'assam-bihu-dhol.jpg',
-    'assam-kamakhya.jpg',
-    'assam-majuli.jpg',
-    'assam-muga-silk.jpg',
-    'assam-rhino.jpg',
-    'assam-tea.jpg',
-  ] 
-};
-
-// Cultural display labels
+// Cultural display labels across all 8 North-Eastern states
 const CULTURAL_LABELS: Record<string, string> = {
+  // Meghalaya
   'meghalaya-root-bridge.jpg': 'Living Root Bridge',
   'meghalaya-nohkalikai.jpg': 'Nohkalikai Falls',
   'meghalaya-dawki.jpg': 'Dawki Umngot River',
   'meghalaya-mawlynnong.jpg': 'Mawlynnong Village',
+  // Arunachal Pradesh
   'arunachal-tawang.jpg': 'Tawang Monastery',
   'arunachal-hornbill.jpg': 'Great Indian Hornbill',
   'arunachal-sela-pass.jpg': 'Sela Pass & Lake',
   'arunachal-ziro-valley.jpg': 'Ziro Valley Pine Hills',
+  // Manipur
   'manipur-loktak.jpg': 'Loktak Lake & Phumdis',
   'manipur-sangai.jpg': 'Sangai Deer',
   'manipur-kangla.jpg': 'Kangla Fort',
   'manipur-raas-leela.jpg': 'Raas Leela Dance',
+  // Assam
   'assam-bihu-dhol.jpg': 'Bihu Dhol',
   'assam-kamakhya.jpg': 'Kamakhya Temple',
   'assam-majuli.jpg': 'Majuli River Island',
   'assam-muga-silk.jpg': 'Assam Muga Silk',
   'assam-rhino.jpg': 'One-Horned Rhino',
   'assam-tea.jpg': 'Assam Tea Garden',
+  // Mizoram
+  'mizoram-cheraw.jpg': 'Cheraw Bamboo Dance',
+  'mizoram-reiek.jpg': 'Reiek Heritage Peak',
+  'mizoram-puan.jpg': 'Puan Traditional Shawl',
+  'mizoram-vantawng.jpg': 'Vantawng Falls',
+  // Nagaland
+  'nagaland-hornbill-festival.jpg': 'Hornbill Festival',
+  'nagaland-dzukou.jpg': 'Dzukou Valley',
+  'nagaland-naga-shawl.jpg': 'Naga Warrior Shawl',
+  'nagaland-khonoma.jpg': 'Khonoma Green Village',
+  // Sikkim
+  'sikkim-kanchenjunga.jpg': 'Mount Kanchenjunga',
+  'sikkim-rumtek.jpg': 'Rumtek Monastery',
+  'sikkim-red-panda.jpg': 'Himalayan Red Panda',
+  'sikkim-gurudongmar.jpg': 'Gurudongmar Lake',
+  // Tripura
+  'tripura-ujjayanta.jpg': 'Ujjayanta Palace',
+  'tripura-neermahal.jpg': 'Neermahal Water Palace',
+  'tripura-unakoti.jpg': 'Unakoti Rock Reliefs',
+  'tripura-bamboo-craft.jpg': 'Bamboo Cane Craft',
+  'tripura-hojagiri.jpg': 'Hojagiri Folk Dance',
 };
 
 export const MatchTheOrderGame: React.FC<MatchTheOrderGameProps> = ({ onBack }) => {
   const { user } = useAuth();
   const { recordGameCompletion, t, selectedRegion } = useApp();
 
-  // Robust region sanitization
+  // Robust region sanitization supporting all 8 North-Eastern states
   const rawRegion = user?.user_metadata?.region || (user as any)?.region || selectedRegion || 'assam';
-  const normalized = String(rawRegion).toLowerCase().trim().replace(/\s+/g, '-');
-  const safeRegion = normalized === 'arunachal' ? 'arunachal-pradesh' : (REGION_ASSETS[normalized] ? normalized : 'assam');
+  const safeRegion = normalizeRegionId(rawRegion);
 
   // Levels: Level 1 (3 items), Level 2 (4 items), Level 3 (4 items shuffled)
   const [level, setLevel] = useState<number>(1);
@@ -315,9 +325,9 @@ export const MatchTheOrderGame: React.FC<MatchTheOrderGameProps> = ({ onBack }) 
                           alt={item.name}
                           className="object-cover w-full h-full rounded-xl"
                           onError={(e) => {
-                            console.error('Failed to load image:', e.currentTarget.src);
+                            console.warn('Image failed to load in MatchTheOrder, using fallback:', e.currentTarget.src);
                             e.currentTarget.onerror = null;
-                            e.currentTarget.src = '/vite.svg';
+                            e.currentTarget.src = getFallbackGameAssetUrl('match-the-order');
                           }}
                         />
                       </div>
@@ -338,9 +348,9 @@ export const MatchTheOrderGame: React.FC<MatchTheOrderGameProps> = ({ onBack }) 
                         alt={filledItem.name}
                         className="object-cover w-full h-full rounded-xl"
                         onError={(e) => {
-                          console.error('Failed to load image:', e.currentTarget.src);
+                          console.warn('Image failed to load in MatchTheOrder, using fallback:', e.currentTarget.src);
                           e.currentTarget.onerror = null;
-                          e.currentTarget.src = '/vite.svg';
+                          e.currentTarget.src = getFallbackGameAssetUrl('match-the-order');
                         }}
                       />
                     </div>
@@ -388,9 +398,9 @@ export const MatchTheOrderGame: React.FC<MatchTheOrderGameProps> = ({ onBack }) 
                   className="object-cover w-full h-full rounded-xl"
                   loading="lazy"
                   onError={(e) => {
-                    console.error('Failed to load image:', e.currentTarget.src);
+                    console.warn('Image failed to load in MatchTheOrder, using fallback:', e.currentTarget.src);
                     e.currentTarget.onerror = null;
-                    e.currentTarget.src = '/vite.svg';
+                    e.currentTarget.src = getFallbackGameAssetUrl('match-the-order');
                   }}
                 />
               </div>

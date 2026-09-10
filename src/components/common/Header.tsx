@@ -2,6 +2,7 @@ import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { soundFx } from '../../utils/audio';
 import { ProfileDropdown } from './ProfileDropdown';
+import { formatFriendlyLocation, isCoordinateString } from '../../utils/locationWeather';
 import { 
   HeartHandshake, 
   BookHeart, 
@@ -52,9 +53,6 @@ export const Header: React.FC = () => {
               <span className="text-xl sm:text-2xl font-black tracking-tight text-stone-900 dark:text-white leading-none">
                 SANJIVNI
               </span>
-              <span className="hidden sm:inline-flex bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-extrabold text-xs px-2.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-                {t('nativeAppName')}
-              </span>
             </div>
             <p className="hidden sm:block text-xs font-bold text-stone-600 dark:text-stone-300 truncate mt-0.5">
               {mode === 'patient' ? (
@@ -99,18 +97,26 @@ export const Header: React.FC = () => {
         {/* Right Section Controls: Live Weather/Location, User Manual Guide & Chunky Profile Dropdown */}
         <div className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
           {/* Live Location & Weather Pill */}
-          <button
-            type="button"
-            onClick={requestLocationAccess}
-            disabled={isLocationLoading}
-            className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 text-xs font-black hover:bg-emerald-100 transition-colors cursor-pointer select-none"
-            title="Click to detect or refresh live GPS location & weather"
-          >
-            <MapPin className={`w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ${isLocationLoading ? 'animate-spin' : ''}`} />
-            <span className="truncate max-w-[120px]">{locationData.city || 'Guwahati'}</span>
-            <span className="text-stone-300 dark:text-stone-700">•</span>
-            <span>{weatherData.temperature}°C</span>
-          </button>
+          {(() => {
+            const friendlyCity = locationData.city && !isCoordinateString(locationData.city)
+              ? locationData.city
+              : (formatFriendlyLocation(locationData).split(',')[0].trim() || 'Guwahati');
+
+            return (
+              <button
+                type="button"
+                onClick={requestLocationAccess}
+                disabled={isLocationLoading}
+                className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 text-xs font-black hover:bg-emerald-100 transition-colors cursor-pointer select-none"
+                title="Click to detect or refresh live GPS location & weather"
+              >
+                <MapPin className={`w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ${isLocationLoading ? 'animate-spin' : ''}`} />
+                <span className="truncate max-w-[120px]">{friendlyCity}</span>
+                <span className="text-stone-300 dark:text-stone-700">•</span>
+                <span>{weatherData.temperature}°C</span>
+              </button>
+            );
+          })()}
 
           {/* User Manual Guide Button */}
           <button

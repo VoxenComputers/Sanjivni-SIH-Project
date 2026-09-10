@@ -3,7 +3,7 @@ import confetti from 'canvas-confetti';
 import { soundFx } from '../../../utils/audio';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
-import { getGameAssetUrl } from '../../../utils/assetManager';
+import { getGameAssetUrl, REGION_ASSETS, normalizeRegionId, getFallbackGameAssetUrl } from '../../../utils/assetManager';
 import { SpeechButton } from '../../common/SpeechButton';
 import { Mascot } from '../../common/Mascot';
 import { ArrowLeft, RotateCcw, Award, Sparkles, CheckCircle2 } from 'lucide-react';
@@ -21,28 +21,13 @@ interface CardItem {
   isMatched: boolean;
 }
 
-const REGION_ASSETS: Record<string, string[]> = {
-  'arunachal-pradesh': ['arunachal-tawang.jpg', 'arunachal-hornbill.jpg', 'arunachal-sela-pass.jpg', 'arunachal-ziro-valley.jpg'],
-  'manipur': ['manipur-loktak.jpg', 'manipur-sangai.jpg', 'manipur-kangla.jpg', 'manipur-raas-leela.jpg'],
-  'meghalaya': ['meghalaya-root-bridge.jpg', 'meghalaya-nohkalikai.jpg', 'meghalaya-dawki.jpg', 'meghalaya-mawlynnong.jpg'],
-  'assam': [
-    'assam-bihu-dhol.jpg',
-    'assam-kamakhya.jpg',
-    'assam-majuli.jpg',
-    'assam-muga-silk.jpg',
-    'assam-rhino.jpg',
-    'assam-tea.jpg',
-  ] 
-};
-
 export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack }) => {
   const { user } = useAuth();
   const { recordGameCompletion, t, selectedRegion } = useApp();
 
-  // Robust region sanitization
+  // Robust region sanitization supporting all 8 North-Eastern states
   const rawRegion = user?.user_metadata?.region || (user as any)?.region || selectedRegion || 'assam';
-  const normalized = String(rawRegion).toLowerCase().trim().replace(/\s+/g, '-');
-  const safeRegion = normalized === 'arunachal' ? 'arunachal-pradesh' : (REGION_ASSETS[normalized] ? normalized : 'assam');
+  const safeRegion = normalizeRegionId(rawRegion);
 
   const [cards, setCards] = useState<CardItem[]>([]);
   const [flippedUids, setFlippedUids] = useState<string[]>([]);
@@ -280,9 +265,9 @@ export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack
                       className="object-cover w-full h-full rounded-xl"
                       loading="lazy"
                       onError={(e) => {
-                        console.error('Failed to load image:', e.currentTarget.src);
+                        console.warn('Image failed to load, falling back to default:', e.currentTarget.src);
                         e.currentTarget.onerror = null;
-                        e.currentTarget.src = '/vite.svg';
+                        e.currentTarget.src = getFallbackGameAssetUrl('picture-match');
                       }}
                     />
                     {card.isMatched && (
