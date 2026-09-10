@@ -29,6 +29,9 @@ interface FamilyMemberFormItem {
   id: string;
   name: string;
   relation: string;
+  age?: number | string;
+  description?: string;
+  quote?: string;
   avatarUrl?: string;
   isUploading?: boolean;
 }
@@ -39,6 +42,7 @@ export const CaregiverSetupWizard: React.FC = () => {
     setIsCaregiverWizardOpen,
     setMode,
     updateCustomFamilyMembers,
+    refreshFamilyMembers,
   } = useApp();
 
   const { user: authUser, appUser } = useAuth();
@@ -79,12 +83,18 @@ export const CaregiverSetupWizard: React.FC = () => {
       id: 'fam-initial-1',
       name: 'Rahul Baruah',
       relation: 'Grandson',
+      age: 14,
+      description: 'Plays striker in football and visits every Sunday.',
+      quote: "Pranam Koka! I'm bringing your favorite sweets this Sunday. Please drink your water and smile!",
       avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80',
     },
     {
       id: 'fam-initial-2',
       name: 'Ananya Baruah',
       relation: 'Granddaughter',
+      age: 9,
+      description: 'Loves drawing and listening to Kaziranga forest tales.',
+      quote: 'Hi Koka! I drew a big colorful picture of Rongmon the baby rhino for you!',
       avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
     },
   ]);
@@ -205,6 +215,9 @@ export const CaregiverSetupWizard: React.FC = () => {
         id: `fam-custom-${Date.now()}`,
         name: '',
         relation: '',
+        age: '',
+        description: '',
+        quote: '',
         avatarUrl: '',
       },
     ]);
@@ -215,7 +228,11 @@ export const CaregiverSetupWizard: React.FC = () => {
     setFamilyList((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleUpdateFamilyMember = (id: string, field: 'name' | 'relation', val: string) => {
+  const handleUpdateFamilyMember = (
+    id: string,
+    field: 'name' | 'relation' | 'age' | 'description' | 'quote',
+    val: string
+  ) => {
     setFamilyList((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: val } : item))
     );
@@ -235,6 +252,12 @@ export const CaregiverSetupWizard: React.FC = () => {
         .map((f) => ({
           name: f.name.trim(),
           relation: f.relation.trim() || 'Family Member',
+          relationship: f.relation.trim() || 'Family Member',
+          age: f.age ? parseInt(String(f.age), 10) || 30 : 30,
+          description: f.description?.trim(),
+          notes: f.description?.trim(),
+          quote: f.quote?.trim(),
+          voiceMessage: f.quote?.trim(),
           avatarUrl: f.avatarUrl,
         }));
 
@@ -268,6 +291,15 @@ export const CaregiverSetupWizard: React.FC = () => {
 
       setIsCaregiverWizardOpen(false);
       setMode('caregiver');
+
+      // Secondary background refresh in isolated try/catch
+      try {
+        if (refreshFamilyMembers) {
+          await refreshFamilyMembers();
+        }
+      } catch (secondaryErr) {
+        console.warn('Background refresh warning in CaregiverSetupWizard:', secondaryErr);
+      }
     } catch (err: any) {
       console.error('[Caregiver Wizard] Database submission rejection:', err);
       const errorMessage =
@@ -771,22 +803,48 @@ export const CaregiverSetupWizard: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Inputs: Name & Relation */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1 w-full">
-                        <input
-                          type="text"
-                          value={member.name}
-                          onChange={(e) => handleUpdateFamilyMember(member.id, 'name', e.target.value)}
-                          placeholder="Member Name"
-                          className="text-xs font-bold py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-stone-900 dark:text-white outline-none"
-                        />
-                        <input
-                          type="text"
-                          value={member.relation}
-                          onChange={(e) => handleUpdateFamilyMember(member.id, 'relation', e.target.value)}
-                          placeholder="Relationship (e.g. Grandson)"
-                          className="text-xs font-bold py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-stone-900 dark:text-white outline-none"
-                        />
+                      {/* Inputs: Name, Relation, Age, Description, Quote */}
+                      <div className="space-y-2 flex-1 w-full">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <input
+                            type="text"
+                            value={member.name}
+                            onChange={(e) => handleUpdateFamilyMember(member.id, 'name', e.target.value)}
+                            placeholder="Member Name *"
+                            className="text-xs font-bold py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-stone-900 dark:text-white outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={member.relation}
+                            onChange={(e) => handleUpdateFamilyMember(member.id, 'relation', e.target.value)}
+                            placeholder="Relationship *"
+                            className="text-xs font-bold py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-stone-900 dark:text-white outline-none"
+                          />
+                          <input
+                            type="number"
+                            value={member.age || ''}
+                            onChange={(e) => handleUpdateFamilyMember(member.id, 'age', e.target.value)}
+                            placeholder="Age (e.g. 28)"
+                            className="text-xs font-bold py-2 px-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-stone-900 dark:text-white outline-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={member.description || ''}
+                            onChange={(e) => handleUpdateFamilyMember(member.id, 'description', e.target.value)}
+                            placeholder="Memory Note (e.g. Visits Sundays, studies engineering...)"
+                            className="text-xs font-bold py-1.5 px-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-stone-900 dark:text-white outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={member.quote || ''}
+                            onChange={(e) => handleUpdateFamilyMember(member.id, 'quote', e.target.value)}
+                            placeholder="Personal Quote (e.g. Pranam! We love you always.)"
+                            className="text-xs font-bold py-1.5 px-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 text-stone-900 dark:text-white outline-none"
+                          />
+                        </div>
                       </div>
 
                       {/* Upload and Remove Buttons */}

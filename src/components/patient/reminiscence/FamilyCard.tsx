@@ -21,8 +21,9 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
     }
 
     soundFx.playClickSound();
+    const spokenText = member.quote || member.voiceMessage || 'Pranam! Remember that our family is always with you. Keep smiling!';
     speechSynth.speak(
-      member.voiceMessage,
+      spokenText,
       () => setIsPlaying(true),
       () => setIsPlaying(false)
     );
@@ -48,13 +49,12 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
           <circle cx="50" cy="46" r="30" fill="#FED7AA" stroke="#78350F" strokeWidth="2.5" />
 
           {/* Hair based on member */}
-          {member.id === 'rahul' && (
+          {member.id === 'rahul' ? (
             <path
               d="M 24 38 Q 30 18 50 18 Q 70 18 76 38 Q 65 24 50 25 Q 35 24 24 38 Z"
               fill="#374151"
             />
-          )}
-          {member.id === 'priya' && (
+          ) : member.id === 'priya' ? (
             <>
               <circle cx="50" cy="18" r="10" fill="#1F2937" />
               <path
@@ -62,8 +62,7 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
                 fill="#1F2937"
               />
             </>
-          )}
-          {member.id === 'bikash' && (
+          ) : member.id === 'bikash' ? (
             <>
               <path
                 d="M 22 40 Q 30 20 50 20 Q 72 20 78 40 Q 64 26 50 27 Q 34 26 22 40 Z"
@@ -73,8 +72,7 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
               <rect x="54" y="42" width="14" height="10" rx="3" fill="none" stroke="#1F2937" strokeWidth="2" />
               <line x1="46" y1="47" x2="54" y2="47" stroke="#1F2937" strokeWidth="2" />
             </>
-          )}
-          {member.id === 'ananya' && (
+          ) : member.id === 'ananya' ? (
             <>
               <circle cx="20" cy="35" r="7" fill="#EC4899" />
               <circle cx="80" cy="35" r="7" fill="#EC4899" />
@@ -83,6 +81,11 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
                 fill="#1F2937"
               />
             </>
+          ) : (
+            <path
+              d="M 24 38 Q 30 18 50 18 Q 70 18 76 38 Q 65 24 50 25 Q 35 24 24 38 Z"
+              fill="#374151"
+            />
           )}
 
           {/* Eyes with friendly sparkle */}
@@ -151,7 +154,7 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
             </h3>
 
             <p className="text-xs sm:text-sm font-bold text-stone-600 dark:text-stone-300 mt-0.5">
-              {t('age')} {member.age} • {member.funFact}
+              {member.age ? `Age ${member.age} • ` : ''}{member.description || member.funFact || 'Loves spending time together with the family.'}
             </p>
           </div>
         </div>
@@ -159,7 +162,7 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
         {/* Message bubble preview */}
         <div className="bg-stone-50 dark:bg-stone-800/80 border-2 border-stone-200 dark:border-stone-700 rounded-xl p-3 mb-3.5 relative">
           <p className="text-xs sm:text-sm font-bold text-stone-800 dark:text-stone-100 italic leading-snug">
-            "{member.voiceMessage}"
+            "{member.quote || member.voiceMessage || 'Pranam! Remember that our family is always with you. Keep smiling!'}"
           </p>
         </div>
       </div>

@@ -1,10 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { soundFx } from '../utils/audio';
 import { SupportedLanguage, getTranslation, getLocalizedFamily, getLocalizedPatient } from '../utils/i18n';
 import { deviceNotifications } from '../utils/notifications';
 import { NERStateId } from '../utils/nerData';
 import { useAuth } from './AuthContext';
-import { fetchUserProfile } from '../lib/supabaseDb';
+import { supabase } from '../lib/supabase';
+import {
+  fetchUserProfile,
+  isValidUuid,
+  fetchFamilyMembers,
+  fetchPatientTasks,
+  addPatientTask,
+  toggleTaskCompletion as toggleTaskCompletionDb,
+} from '../lib/supabaseDb';
 import {
   LocationData,
   WeatherData,
@@ -24,11 +32,14 @@ export interface FamilyMember {
   id: string;
   name: string;
   relation: string;
+  relationship?: string;
   localRelation: string;
   age: number;
   avatarColor: string;
   avatarIcon: string;
   voiceMessage: string;
+  quote?: string;
+  description?: string;
   lastSpokenDate: string;
   funFact: string;
   avatarUrl?: string;
@@ -44,7 +55,10 @@ export interface RoutineTask {
   type: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game';
   category: 'medication' | 'hydration' | 'exercise' | 'food' | 'game';
   timeOfDay?: 'morning' | 'afternoon' | 'evening';
+  period?: 'morning' | 'afternoon' | 'evening';
+  time_slot?: string;
   description: string;
+  notes?: string;
   titleKey?: string;
   descKey?: string;
 }
@@ -126,6 +140,9 @@ interface AppContextType {
   setIsCaregiverWizardOpen: (open: boolean) => void;
   isPatientWaitingForCaregiver: boolean;
   setIsPatientWaitingForCaregiver: (waiting: boolean) => void;
+  activePatientId: string | null;
+  isLoadingFamily: boolean;
+  refreshFamilyMembers: () => Promise<void>;
   updateCustomFamilyMembers: (members: FamilyMember[]) => void;
   updateCustomTasks: (tasks: RoutineTask[]) => void;
   updatePatientProfile: (profile: { name?: string; avatar?: string }) => void;
@@ -146,12 +163,14 @@ interface AppContextType {
   };
   familyMembers: FamilyMember[];
   tasks: RoutineTask[];
-  addTask: (task: {
+  addTask: (task: Partial<RoutineTask> & {
     title: string;
-    time: string;
+    time?: string;
     type?: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game';
     description?: string;
+    notes?: string;
     timeOfDay?: 'morning' | 'afternoon' | 'evening';
+    period?: 'morning' | 'afternoon' | 'evening';
     titleKey?: string;
     descKey?: string;
   }) => void;
@@ -408,6 +427,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [mode, setModeState] = useState<'patient' | 'caregiver'>('patient');
   const [patientTab, setPatientTab] = useState<'reminisce' | 'games' | 'routine'>('reminisce');
 
+  // Active Patient ID resolution (for patient view and caregiver view)
+  const activePatientId = useMemo<string | null>(() => {
+    // 1. If caregiver mode or user is caregiver: MUST use linked patient ID
+    if (userRole === 'caregiver' || mode === 'caregiver') {
+      if (typeof window !== 'undefined') {
+        const linkedId = localStorage.getItem('smriti_linked_patient_id');
+        if (linkedId && linkedId !== 'demo-patient-koka') return linkedId;
+      }
+      return null;
+    }
+
+    // 2. If authenticated Supabase user (patient)
+    if (auth.user?.id) {
+      return auth.user.id;
+    }
+
+    // 3. If appUser has an ID and not demo
+    if (auth.appUser?.id && auth.appUser.id !== 'demo-patient') {
+      return auth.appUser.id;
+    }
+
+    // 4. If stored patient profile in localStorage
+    if (typeof window !== 'undefined') {
+      const savedPatient = localStorage.getItem('smriti_patient_profile');
+      if (savedPatient) {
+        try {
+          const parsed = JSON.parse(savedPatient);
+          if (parsed?.id && parsed.id !== 'demo-patient') return parsed.id;
+        } catch (e) {
+          // ignore
+        }
+      }
+      const linkedId = localStorage.getItem('smriti_linked_patient_id');
+      if (linkedId && linkedId !== 'demo-patient-koka') return linkedId;
+    }
+
+    return null;
+  }, [auth.user?.id, auth.appUser?.id, userRole, mode]);
+
+  const [isLoadingFamily, setIsLoadingFamily] = useState<boolean>(false);
+
   const [customFamilyMembers, setCustomFamilyMembers] = useState<FamilyMember[] | null>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('smriti_custom_family');
@@ -422,13 +482,207 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
-  const localizedFamily = React.useMemo(() => getLocalizedFamily(language), [language]);
-  const familyMembers = React.useMemo(() => {
-    if (customFamilyMembers && customFamilyMembers.length > 0) {
-      return customFamilyMembers;
+  const loadFamilyMembersFromDb = useCallback(async (targetPatientId?: string | null) => {
+    const idToQuery = targetPatientId || activePatientId;
+    if (!idToQuery || idToQuery === 'demo-patient-koka') {
+      return;
     }
-    return localizedFamily;
-  }, [customFamilyMembers, localizedFamily]);
+
+    try {
+      setIsLoadingFamily(true);
+      const { data, error } = await supabase
+        .from('family_members')
+        .select('*')
+        .eq('patient_id', idToQuery)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('[AppContext] Error querying family_members from Supabase:', error.message);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const avatarColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6'];
+        const mapped: FamilyMember[] = data.map((row: any, index: number) => ({
+          id: row.id,
+          name: row.name,
+          relation: row.relation,
+          localRelation: row.local_relation || `${row.relation} • Family Member`,
+          age: row.age || 30,
+          avatarColor: row.avatar_color || avatarColors[index % avatarColors.length],
+          avatarIcon: 'user' as const,
+          voiceMessage: row.voice_message || `Pranam! Remember that our family is always with you. Keep smiling!`,
+          lastSpokenDate: 'Recently added',
+          funFact: row.fun_fact || `Loves spending time together with the family.`,
+          avatarUrl: row.avatar_url || undefined,
+        }));
+
+        setCustomFamilyMembers(mapped);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('smriti_custom_family', JSON.stringify(mapped));
+        }
+      } else if (data && data.length === 0) {
+        // Explicitly set to empty array so demo cards are NOT shown for linked/authenticated patient
+        setCustomFamilyMembers([]);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('smriti_custom_family', JSON.stringify([]));
+        }
+      }
+    } catch (err) {
+      console.warn('[AppContext] loadFamilyMembersFromDb exception:', err);
+    } finally {
+      setIsLoadingFamily(false);
+    }
+  }, [activePatientId]);
+
+  const refreshFamilyMembers = useCallback(async () => {
+    await loadFamilyMembersFromDb();
+  }, [loadFamilyMembersFromDb]);
+
+  // Tasks Database Loader & Realtime Sync
+  const loadTasksFromDb = useCallback(async (targetPatientId?: string | null) => {
+    const idToQuery = targetPatientId || activePatientId;
+    if (!idToQuery || idToQuery === 'demo-patient-koka') {
+      return;
+    }
+
+    try {
+      const liveTasks = await fetchPatientTasks(idToQuery);
+      if (liveTasks && liveTasks.length > 0) {
+        setTasks(liveTasks);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('smriti_tasks', JSON.stringify(liveTasks));
+        }
+      }
+    } catch (err) {
+      console.warn('[AppContext] loadTasksFromDb exception:', err);
+    }
+  }, [activePatientId]);
+
+  // Initial and reactive load from Supabase whenever activePatientId is resolved
+  useEffect(() => {
+    if (activePatientId) {
+      loadFamilyMembersFromDb(activePatientId);
+      loadTasksFromDb(activePatientId);
+    }
+  }, [activePatientId, loadFamilyMembersFromDb, loadTasksFromDb]);
+
+  // If caregiver is logged in, check profile for linked_patient_id if not yet in localStorage
+  useEffect(() => {
+    const resolveCaregiverLinked = async () => {
+      if (auth.user?.id && userRole === 'caregiver') {
+        const profile = await fetchUserProfile(auth.user.id);
+        if (profile?.linked_patient_id) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('smriti_linked_patient_id', profile.linked_patient_id);
+          }
+          loadFamilyMembersFromDb(profile.linked_patient_id);
+          loadTasksFromDb(profile.linked_patient_id);
+        }
+      }
+    };
+    resolveCaregiverLinked();
+  }, [auth.user?.id, userRole, loadFamilyMembersFromDb, loadTasksFromDb]);
+
+  // Realtime Live Sync: Listen for changes to family_members table for activePatientId
+  useEffect(() => {
+    if (!activePatientId || activePatientId === 'demo-patient-koka' || !isValidUuid(activePatientId)) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`realtime_family_${activePatientId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'family_members',
+          filter: `patient_id=eq.${activePatientId}`,
+        },
+        () => {
+          loadFamilyMembersFromDb(activePatientId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activePatientId, loadFamilyMembersFromDb]);
+
+  // Realtime Live Sync: Listen for changes to patient_tasks and routine_tasks table
+  useEffect(() => {
+    if (!activePatientId || activePatientId === 'demo-patient-koka' || !isValidUuid(activePatientId)) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`realtime_app_tasks_${activePatientId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'patient_tasks',
+          filter: `patient_id=eq.${activePatientId}`,
+        },
+        () => {
+          loadTasksFromDb(activePatientId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'routine_tasks',
+          filter: `patient_id=eq.${activePatientId}`,
+        },
+        () => {
+          loadTasksFromDb(activePatientId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activePatientId, loadTasksFromDb]);
+
+  const DEMO_FAMILY_IDS = useMemo(() => new Set(['rahul', 'priya', 'bikash', 'ananya']), []);
+
+  // Determine whether running in an unauthenticated offline demo sandbox
+  const isOfflineDemoSandbox = useMemo(() => {
+    if (auth.user?.id) return false;
+    if (activePatientId && isValidUuid(activePatientId)) return false;
+    if (isPaired && connectionCode !== '849201') return false;
+    return true;
+  }, [auth.user?.id, activePatientId, isPaired, connectionCode]);
+
+  const localizedFamily = React.useMemo(() => getLocalizedFamily(language), [language]);
+
+  const familyMembers = React.useMemo(() => {
+    // 1. If custom family members exist (from Supabase query or localStorage cache)
+    if (customFamilyMembers !== null) {
+      // If NOT in demo sandbox, strictly use custom members (never fall back to 4 demo cards)
+      if (!isOfflineDemoSandbox) {
+        return customFamilyMembers.filter((m) => !DEMO_FAMILY_IDS.has(m.id));
+      }
+
+      // If in demo sandbox, use custom members if available
+      if (customFamilyMembers.length > 0) {
+        return customFamilyMembers;
+      }
+    }
+
+    // 2. Only fall back to localized demo cards if explicitly in offline demo sandbox
+    if (isOfflineDemoSandbox) {
+      return localizedFamily;
+    }
+
+    return [];
+  }, [customFamilyMembers, localizedFamily, isOfflineDemoSandbox, DEMO_FAMILY_IDS]);
 
   const [tasks, setTasks] = useState<RoutineTask[]>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('smriti_tasks') : null;
@@ -943,6 +1197,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (nextState) {
             soundFx.playSuccessChime();
           }
+          // Live Supabase update
+          toggleTaskCompletionDb(id, nextState).catch(err => {
+            console.warn('[AppContext] toggleTaskCompletionDb sync notice:', err);
+          });
           return {
             ...t,
             isCompleted: nextState,
@@ -958,12 +1216,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleTaskCompletion(id);
   };
 
-  const addTask = (newTask: {
+  const addTask = (newTask: Partial<RoutineTask> & {
     title: string;
-    time: string;
+    time?: string;
     type?: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game';
     description?: string;
+    notes?: string;
     timeOfDay?: 'morning' | 'afternoon' | 'evening';
+    period?: 'morning' | 'afternoon' | 'evening';
     titleKey?: string;
     descKey?: string;
   }) => {
@@ -972,8 +1232,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const category: 'medication' | 'hydration' | 'exercise' | 'food' | 'game' =
       type === 'medicine' ? 'medication' : (type as any);
 
-    let timeOfDay: 'morning' | 'afternoon' | 'evening' = newTask.timeOfDay || 'morning';
-    if (!newTask.timeOfDay && newTask.time) {
+    let timeOfDay: 'morning' | 'afternoon' | 'evening' = newTask.period || newTask.timeOfDay || 'morning';
+    if (!newTask.timeOfDay && !newTask.period && newTask.time) {
       const lower = newTask.time.toLowerCase();
       if (lower.includes('pm')) {
         const hour = parseInt(newTask.time, 10);
@@ -987,22 +1247,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    const finalTime = newTask.time || newTask.timeStr || newTask.time_slot || '09:00 AM';
+
     const task: RoutineTask = {
-      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: newTask.id || `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       title: newTask.title,
-      time: newTask.time,
-      timeStr: newTask.time,
-      isCompleted: false,
-      completed: false,
+      time: finalTime,
+      timeStr: newTask.timeStr || finalTime,
+      time_slot: newTask.time_slot || finalTime,
+      isCompleted: !!(newTask.completed || newTask.isCompleted),
+      completed: !!(newTask.completed || newTask.isCompleted),
       type,
       category,
       timeOfDay,
-      description: newTask.description || newTask.title,
+      period: timeOfDay,
+      description: newTask.description || newTask.notes || newTask.title,
+      notes: newTask.notes || newTask.description || '',
       titleKey: newTask.titleKey,
       descKey: newTask.descKey,
     };
 
-    setTasks(prev => [...prev, task]);
+    setTasks(prev => {
+      const filtered = prev.filter(t => t.id !== task.id);
+      const updated = [...filtered, task];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('smriti_tasks', JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    // Live Supabase insert if activePatientId is available and not already persisted in DB
+    const isAlreadyPersisted = !!(newTask.id && isValidUuid(newTask.id));
+    if (!isAlreadyPersisted && activePatientId && isValidUuid(activePatientId)) {
+      addPatientTask({
+        patientId: activePatientId,
+        title: newTask.title,
+        timeSlot: finalTime,
+        time_slot: finalTime,
+        period: timeOfDay,
+        notes: task.notes,
+        description: task.description,
+        type: type,
+        category: category,
+      }).catch(err => {
+        console.warn('[AppContext] addPatientTask live sync notice:', err);
+      });
+    }
   };
 
   const recordGameCompletion = (
@@ -1124,6 +1414,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsCaregiverWizardOpen,
         isPatientWaitingForCaregiver,
         setIsPatientWaitingForCaregiver,
+        activePatientId,
+        isLoadingFamily,
+        refreshFamilyMembers,
         updateCustomFamilyMembers,
         updateCustomTasks,
         updatePatientProfile,

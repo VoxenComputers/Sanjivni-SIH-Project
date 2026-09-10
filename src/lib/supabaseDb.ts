@@ -366,25 +366,45 @@ export const saveCaregiverWizardData = async (
     relationship: string;
     avatarUrl?: string;
   },
-  familyMembers: Array<{ name: string; relation: string; avatarUrl?: string }>
+  familyMembers: Array<{
+    name: string;
+    relation: string;
+    relationship?: string;
+    age?: number | string;
+    description?: string;
+    notes?: string;
+    quote?: string;
+    voiceMessage?: string;
+    avatarUrl?: string;
+  }>
 ): Promise<{
   success: boolean;
   formattedFamily: FamilyMember[];
 }> => {
   const avatarColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6'];
-  const formattedFamily: FamilyMember[] = familyMembers.map((m, index) => ({
-    id: `fam-${Date.now()}-${index}`,
-    name: m.name,
-    relation: m.relation,
-    localRelation: `${m.relation} • Family Member`,
-    age: 30,
-    avatarColor: avatarColors[index % avatarColors.length],
-    avatarIcon: 'user',
-    voiceMessage: `Pranam! Remember that our family is always with you. Keep smiling!`,
-    lastSpokenDate: 'Recently added',
-    funFact: `Loves spending time together with the family.`,
-    avatarUrl: m.avatarUrl,
-  }));
+  const formattedFamily: FamilyMember[] = familyMembers.map((m, index) => {
+    const ageVal = m.age ? parseInt(String(m.age), 10) || 30 : 30;
+    const relVal = (m.relation || m.relationship || 'Family Member').trim();
+    const descVal = (m.description || m.notes || 'Loves spending time together with the family.').trim();
+    const quoteVal = (m.quote || m.voiceMessage || 'Pranam! Remember that our family is always with you. Keep smiling!').trim();
+
+    return {
+      id: `fam-${Date.now()}-${index}`,
+      name: m.name.trim(),
+      relation: relVal,
+      relationship: relVal,
+      localRelation: `${relVal} • Family Member`,
+      age: ageVal,
+      avatarColor: avatarColors[index % avatarColors.length],
+      avatarIcon: 'user' as const,
+      voiceMessage: quoteVal,
+      quote: quoteVal,
+      description: descVal,
+      funFact: descVal,
+      lastSpokenDate: 'Recently added',
+      avatarUrl: m.avatarUrl,
+    };
+  });
 
   // Cache in localStorage
   if (typeof window !== 'undefined') {
@@ -428,75 +448,280 @@ export const saveCaregiverWizardData = async (
   }
 
   // 2. Insert family members into Supabase
+  let finalFamily = formattedFamily;
   const targetPatientId = isValidUuid(patientId) ? patientId : null;
   if (familyMembers.length > 0 && targetPatientId) {
-    const familyPayload = familyMembers.map((f) => ({
-      patient_id: targetPatientId,
-      name: f.name,
-      relation: f.relation,
-      avatar_url: f.avatarUrl || null,
-    }));
+    const familyPayload = familyMembers.map((f, index) => {
+      const relVal = (f.relation || f.relationship || 'Family Member').trim();
+      const descVal = (f.description || f.notes || 'Loves spending time together with the family.').trim();
+      const quoteVal = (f.quote || f.voiceMessage || 'Pranam! Remember that our family is always with you. Keep smiling!').trim();
 
-    const { error: familyError } = await supabase.from('family_members').insert(familyPayload);
+      return {
+        patient_id: targetPatientId,
+        name: f.name.trim(),
+        relation: relVal,
+        local_relation: `${relVal} • Family Member`,
+        avatar_url: f.avatarUrl || null,
+        avatar_color: avatarColors[index % avatarColors.length],
+        voice_message: quoteVal,
+        fun_fact: descVal,
+      };
+    });
+
+    const { data: insertedRows, error: familyError } = await supabase
+      .from('family_members')
+      .insert(familyPayload)
+      .select();
 
     if (familyError) {
       console.error('[Supabase DB] Error inserting family members:', familyError);
       throw familyError;
     }
+
+    if (insertedRows && insertedRows.length > 0) {
+      finalFamily = insertedRows.map((row: any, idx: number) => {
+        const ageVal = familyMembers[idx]?.age ? parseInt(String(familyMembers[idx].age), 10) || 30 : 30;
+        const relVal = row.relation || familyMembers[idx]?.relation || 'Family Member';
+        const quoteVal = row.voice_message || familyMembers[idx]?.quote || 'Pranam! Remember that our family is always with you. Keep smiling!';
+        const descVal = row.fun_fact || familyMembers[idx]?.description || 'Loves spending time together with the family.';
+
+        return {
+          id: row.id,
+          name: row.name,
+          relation: relVal,
+          relationship: relVal,
+          localRelation: row.local_relation || `${relVal} • Family Member`,
+          age: ageVal,
+          avatarColor: row.avatar_color || avatarColors[idx % avatarColors.length],
+          avatarIcon: 'user' as const,
+          voiceMessage: quoteVal,
+          quote: quoteVal,
+          description: descVal,
+          funFact: descVal,
+          lastSpokenDate: 'Recently added',
+          avatarUrl: row.avatar_url || undefined,
+        };
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('smriti_custom_family', JSON.stringify(finalFamily));
+      }
+    }
   }
 
   return {
     success: true,
-    formattedFamily,
+    formattedFamily: finalFamily,
   };
 };
 
 /**
- * 7. Add a Family Member (Caregiver Dashboard live sync)
+ * 7. Fetch Live Family Members from Supabase 'family_members'
  */
-export const addFamilyMemberDb = async (
-  patientId: string,
-  member: { name: string; relation: string; avatarUrl?: string }
-): Promise<FamilyMember> => {
-  const avatarColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6'];
-  const newMember: FamilyMember = {
-    id: `fam-${Date.now()}`,
-    name: member.name,
-    relation: member.relation,
-    localRelation: `${member.relation} • Family Member`,
-    age: 28,
-    avatarColor: avatarColors[Math.floor(Math.random() * avatarColors.length)],
-    avatarIcon: 'user',
-    voiceMessage: `Pranam! Wishing you a peaceful and bright day.`,
-    lastSpokenDate: 'Just now',
-    funFact: `Cares deeply for the family.`,
-    avatarUrl: member.avatarUrl,
-  };
+export const fetchFamilyMembers = async (patientId: string): Promise<FamilyMember[]> => {
+  if (!patientId || patientId === 'demo-patient-koka') {
+    return [];
+  }
 
   try {
     const { data, error } = await supabase
       .from('family_members')
-      .insert({
-        patient_id: patientId,
-        name: member.name,
-        relation: member.relation,
-        avatar_url: member.avatarUrl || null,
-      })
-      .select()
-      .maybeSingle();
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: true });
 
-    if (!error && data?.id) {
-      newMember.id = data.id;
+    if (error) {
+      console.warn('[Supabase DB] fetchFamilyMembers error:', error.message);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    const avatarColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6'];
+
+    return data.map((row: any, index: number) => {
+      const parsedAge = row.age ? parseInt(String(row.age), 10) : undefined;
+      const quoteVal = row.quote || row.voice_message || `Pranam! Remember that our family is always with you. Keep smiling!`;
+      const descVal = row.description || row.fun_fact || `Loves spending time together with the family.`;
+      const relationVal = row.relation || row.relationship || 'Family Member';
+
+      return {
+        id: row.id,
+        name: row.name,
+        relation: relationVal,
+        relationship: relationVal,
+        localRelation: row.local_relation || `${relationVal} • Family Member`,
+        age: parsedAge || 30,
+        avatarColor: row.avatar_color || avatarColors[index % avatarColors.length],
+        avatarIcon: 'user' as const,
+        voiceMessage: quoteVal,
+        quote: quoteVal,
+        description: descVal,
+        funFact: descVal,
+        lastSpokenDate: 'Recently added',
+        avatarUrl: row.avatar_url || undefined,
+      };
+    });
+  } catch (err) {
+    console.warn('[Supabase DB] fetchFamilyMembers exception:', err);
+    return [];
+  }
+};
+
+/**
+ * 8. Add a Family Member (Caregiver Dashboard live sync)
+ */
+export const addFamilyMemberDb = async (
+  patientId: string,
+  member: {
+    name: string;
+    relation?: string;
+    relationship?: string;
+    age?: number | string;
+    description?: string;
+    notes?: string;
+    quote?: string;
+    voiceMessage?: string;
+    funFact?: string;
+    avatarUrl?: string;
+    avatarColor?: string;
+  }
+): Promise<FamilyMember> => {
+  const avatarColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6'];
+  const chosenColor = member.avatarColor || avatarColors[Math.floor(Math.random() * avatarColors.length)];
+  const relationVal = (member.relationship || member.relation || 'Family Member').trim();
+  const quoteVal = (member.quote || member.voiceMessage || 'Pranam! Remember that our family is always with you. Keep smiling!').trim();
+  const descVal = (member.description || member.notes || member.funFact || 'Loves spending time together with the family.').trim();
+  const parsedAge = member.age ? parseInt(String(member.age), 10) || 30 : 30;
+
+  const newMember: FamilyMember = {
+    id: `fam-${Date.now()}`,
+    name: member.name.trim(),
+    relation: relationVal,
+    relationship: relationVal,
+    localRelation: `${relationVal} • Family Member`,
+    age: parsedAge,
+    avatarColor: chosenColor,
+    avatarIcon: 'user',
+    voiceMessage: quoteVal,
+    quote: quoteVal,
+    description: descVal,
+    funFact: descVal,
+    lastSpokenDate: 'Just now',
+    avatarUrl: member.avatarUrl,
+  };
+
+  try {
+    const targetPatientId = isValidUuid(patientId) ? patientId : null;
+    if (targetPatientId) {
+      // Primary Insert: using age, description, quote, relationship, and core columns with .select()
+      const payload: Record<string, any> = {
+        patient_id: targetPatientId,
+        name: member.name.trim(),
+        relationship: relationVal,
+        relation: relationVal,
+        local_relation: newMember.localRelation,
+        age: parsedAge,
+        description: descVal,
+        quote: quoteVal,
+        avatar_url: member.avatarUrl || null,
+        avatar_color: chosenColor,
+        voice_message: quoteVal,
+        fun_fact: descVal,
+      };
+
+      let { data, error } = await supabase
+        .from('family_members')
+        .insert([payload])
+        .select();
+
+      // If Postgres schema does not have the newer optional columns, fallback gracefully to core columns
+      if (error && (error.message?.includes('column') || error.code === '42703')) {
+        console.warn('[Supabase DB] Column mismatch in family_members, retrying with core columns:', error.message);
+        const corePayload = {
+          patient_id: targetPatientId,
+          name: member.name.trim(),
+          relation: relationVal,
+          local_relation: newMember.localRelation,
+          avatar_url: member.avatarUrl || null,
+          avatar_color: chosenColor,
+          voice_message: quoteVal,
+          fun_fact: descVal,
+        };
+        const retryRes = await supabase
+          .from('family_members')
+          .insert([corePayload])
+          .select();
+
+        data = retryRes.data;
+        error = retryRes.error;
+      }
+
+      if (error) {
+        console.error('Actual DB Insert Error:', error);
+        throw new Error(error.message || 'Failed to add member to database');
+      }
+
+      if (data && data.length > 0 && data[0]?.id) {
+        newMember.id = data[0].id;
+      }
     }
   } catch (err) {
-    console.warn('[Supabase DB] addFamilyMemberDb insert warning:', err);
+    console.error('[Supabase DB] addFamilyMemberDb exception:', err);
+    throw err;
   }
 
   return newMember;
 };
 
 /**
- * 8. Delete a Family Member (Caregiver Dashboard live sync)
+ * 9. Update a Family Member (Caregiver Dashboard live sync)
+ */
+export const updateFamilyMemberDb = async (
+  memberId: string,
+  updates: Partial<FamilyMember>
+): Promise<boolean> => {
+  try {
+    const payload: Record<string, any> = {};
+    if (updates.name !== undefined) payload.name = updates.name.trim();
+    if (updates.relation !== undefined || updates.relationship !== undefined) {
+      const rel = (updates.relation || updates.relationship || '').trim();
+      payload.relation = rel;
+      payload.relationship = rel;
+      payload.local_relation = updates.localRelation || `${rel} • Family Member`;
+    }
+    if (updates.age !== undefined) payload.age = updates.age;
+    if (updates.avatarUrl !== undefined) payload.avatar_url = updates.avatarUrl;
+    if (updates.voiceMessage !== undefined || updates.quote !== undefined) {
+      payload.voice_message = updates.quote || updates.voiceMessage;
+      payload.quote = updates.quote || updates.voiceMessage;
+    }
+    if (updates.funFact !== undefined || updates.description !== undefined) {
+      payload.fun_fact = updates.description || updates.funFact;
+      payload.description = updates.description || updates.funFact;
+    }
+    if (updates.avatarColor !== undefined) payload.avatar_color = updates.avatarColor;
+
+    const { error } = await supabase
+      .from('family_members')
+      .update(payload)
+      .eq('id', memberId);
+
+    if (error) {
+      console.warn('[Supabase DB] updateFamilyMemberDb error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase DB] updateFamilyMemberDb exception:', err);
+    return false;
+  }
+};
+
+/**
+ * 10. Delete a Family Member (Caregiver Dashboard live sync)
  */
 export const deleteFamilyMemberDb = async (memberId: string): Promise<boolean> => {
   try {
@@ -513,6 +738,229 @@ export const deleteFamilyMemberDb = async (memberId: string): Promise<boolean> =
   }
   return true;
 };
+
+/**
+ * 11. Fetch Patient Routine Tasks from Supabase ('patient_tasks' or 'routine_tasks')
+ * Retrieves tasks ordered by scheduled time slot.
+ */
+export const fetchPatientTasks = async (patientId: string): Promise<RoutineTask[]> => {
+  if (!patientId || patientId === 'demo-patient-koka') {
+    return [];
+  }
+
+  try {
+    // 1. Try querying patient_tasks table ordered by time_slot
+    const { data: ptData, error: ptError } = await supabase
+      .from('patient_tasks')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('time_slot', { ascending: true });
+
+    if (!ptError && ptData && ptData.length > 0) {
+      return ptData.map((row: any) => {
+        const timeVal = row.time_slot || row.time || '09:00 AM';
+        const periodVal = (row.period || row.time_of_day || 'morning') as 'morning' | 'afternoon' | 'evening';
+        const isDone = !!(row.completed ?? row.is_completed);
+
+        return {
+          id: row.id,
+          title: row.title,
+          time: timeVal,
+          timeStr: timeVal,
+          time_slot: timeVal,
+          period: periodVal,
+          timeOfDay: periodVal,
+          category: (row.category || 'medication') as any,
+          type: (row.type || 'medicine') as any,
+          description: row.notes || row.description || '',
+          notes: row.notes || row.description || '',
+          isCompleted: isDone,
+          completed: isDone,
+        };
+      });
+    }
+
+    // 2. Try routine_tasks table fallback
+    const { data: rtData, error: rtError } = await supabase
+      .from('routine_tasks')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('time_str', { ascending: true });
+
+    if (!rtError && rtData && rtData.length > 0) {
+      return rtData.map((row: any) => {
+        const timeVal = row.time_str || row.time || '09:00 AM';
+        const periodVal = (row.time_of_day || row.period || 'morning') as 'morning' | 'afternoon' | 'evening';
+        const isDone = !!(row.is_completed ?? row.completed);
+
+        return {
+          id: row.id,
+          title: row.title,
+          time: timeVal,
+          timeStr: timeVal,
+          time_slot: timeVal,
+          period: periodVal,
+          timeOfDay: periodVal,
+          category: (row.category || 'medication') as any,
+          type: (row.type || 'medicine') as any,
+          description: row.description || row.notes || '',
+          notes: row.notes || row.description || '',
+          isCompleted: isDone,
+          completed: isDone,
+        };
+      });
+    }
+
+    return [];
+  } catch (err) {
+    console.warn('[Supabase DB] fetchPatientTasks exception:', err);
+    return [];
+  }
+};
+
+/**
+ * 12. Add a Routine Task to Supabase ('patient_tasks' with 'routine_tasks' fallback)
+ * Inserts title, time_slot, period (morning/afternoon/evening), and notes using .insert([...]).select().
+ */
+export const addPatientTask = async (taskData: {
+  patientId: string;
+  title: string;
+  timeSlot?: string;
+  time_slot?: string;
+  time?: string;
+  period?: 'morning' | 'afternoon' | 'evening';
+  timeOfDay?: 'morning' | 'afternoon' | 'evening';
+  notes?: string;
+  description?: string;
+  category?: 'medication' | 'hydration' | 'exercise' | 'food' | 'game';
+  type?: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game';
+}): Promise<RoutineTask> => {
+  const timeStr = taskData.timeSlot || taskData.time_slot || taskData.time || '09:00 AM';
+  const period = taskData.period || taskData.timeOfDay || 'morning';
+  const notesVal = taskData.notes || taskData.description || '';
+  const type = taskData.type || 'medicine';
+  const category = taskData.category || (type === 'medicine' ? 'medication' : (type as any));
+
+  const newTask: RoutineTask = {
+    id: `task-${Date.now()}`,
+    title: taskData.title.trim(),
+    time: timeStr,
+    timeStr: timeStr,
+    time_slot: timeStr,
+    timeOfDay: period,
+    period: period,
+    type: type as any,
+    category: category as any,
+    description: notesVal,
+    notes: notesVal,
+    isCompleted: false,
+    completed: false,
+  };
+
+  const targetPatientId = isValidUuid(taskData.patientId) ? taskData.patientId : null;
+  if (!targetPatientId) {
+    console.warn('[Supabase DB] addPatientTask called without a valid patient UUID:', taskData.patientId);
+    return newTask;
+  }
+
+  const payload = {
+    patient_id: targetPatientId,
+    title: taskData.title.trim(),
+    time_slot: timeStr,
+    period: period,
+    notes: notesVal,
+    completed: false,
+  };
+
+  console.log("Saving patient task payload:", payload);
+
+  try {
+    // 1. Insert into patient_tasks table with .select()
+    const { data: ptData, error: ptError } = await supabase
+      .from('patient_tasks')
+      .insert([payload])
+      .select();
+
+    if (ptError) {
+      console.error('[Supabase DB] Exact Supabase error (patient_tasks):', ptError);
+    }
+
+    if (!ptError && ptData && ptData.length > 0) {
+      newTask.id = ptData[0].id;
+      return newTask;
+    }
+
+    // 2. Try routine_tasks fallback if patient_tasks table does not exist or has an error
+    if (ptError) {
+      console.warn('[Supabase DB] patient_tasks insert notice, trying routine_tasks fallback:', ptError.message);
+      const fallbackPayload = {
+        patient_id: targetPatientId,
+        title: taskData.title.trim(),
+        description: notesVal,
+        time_str: timeStr,
+        time_of_day: period,
+        category: category,
+        type: type,
+        is_completed: false,
+      };
+      console.log("Saving patient task payload (routine_tasks fallback):", fallbackPayload);
+
+      const { data: rtData, error: rtError } = await supabase
+        .from('routine_tasks')
+        .insert([fallbackPayload])
+        .select();
+
+      if (rtError) {
+        console.error('[Supabase DB] Exact Supabase error (routine_tasks):', rtError);
+        throw new Error(rtError.message || ptError.message || 'Failed to insert routine task into database');
+      }
+
+      if (rtData && rtData.length > 0) {
+        newTask.id = rtData[0].id;
+      }
+    }
+  } catch (err: any) {
+    console.error('[Supabase DB] addPatientTask exception:', err);
+    throw err;
+  }
+
+  return newTask;
+};
+
+/**
+ * 13. Toggle Routine Task Completion in Supabase
+ * Updates the 'completed' column (and 'is_completed' on routine_tasks).
+ */
+export const toggleTaskCompletion = async (taskId: string, completed: boolean): Promise<boolean> => {
+  if (!taskId) return false;
+
+  try {
+    if (isValidUuid(taskId)) {
+      // 1. Update patient_tasks (completed column)
+      const { error: ptError } = await supabase
+        .from('patient_tasks')
+        .update({ completed: completed })
+        .eq('id', taskId);
+
+      // 2. Update routine_tasks (is_completed column)
+      const { error: rtError } = await supabase
+        .from('routine_tasks')
+        .update({ is_completed: completed })
+        .eq('id', taskId);
+
+      if (ptError && rtError) {
+        console.warn('[Supabase DB] toggleTaskCompletion notice:', ptError.message || rtError.message);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase DB] toggleTaskCompletion exception:', err);
+    return false;
+  }
+};
+
+// Backwards compatibility alias
+export const toggleTaskCompletionDb = toggleTaskCompletion;
 
 /**
  * 9. True Account Deletion via PostgreSQL RPC 'delete_user_account'

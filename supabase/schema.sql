@@ -49,7 +49,26 @@ CREATE TABLE IF NOT EXISTS public.family_members (
 
 CREATE INDEX IF NOT EXISTS idx_family_members_patient_id ON public.family_members(patient_id);
 
--- 4. Daily Routine Tasks Table
+-- Ensure extended custom family member columns exist
+ALTER TABLE public.family_members ADD COLUMN IF NOT EXISTS age INT;
+ALTER TABLE public.family_members ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.family_members ADD COLUMN IF NOT EXISTS quote TEXT;
+ALTER TABLE public.family_members ADD COLUMN IF NOT EXISTS relationship TEXT;
+
+-- 4. Daily Routine Tasks Tables (Both patient_tasks and routine_tasks supported)
+CREATE TABLE IF NOT EXISTS public.patient_tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    patient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    time_slot TEXT NOT NULL,
+    period TEXT DEFAULT 'morning' CHECK (period IN ('morning', 'afternoon', 'evening')),
+    notes TEXT,
+    completed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_patient_tasks_patient_id ON public.patient_tasks(patient_id);
+
 CREATE TABLE IF NOT EXISTS public.routine_tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     patient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -68,6 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_routine_tasks_patient_id ON public.routine_tasks(
 -- 5. Row Level Security (RLS) Setup
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.family_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.patient_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.routine_tasks ENABLE ROW LEVEL SECURITY;
 
 -- Profiles Policies
@@ -143,6 +163,29 @@ CREATE POLICY "Routine tasks manageable by patient and caregiver"
         EXISTS (
             SELECT 1 FROM public.profiles 
             WHERE id = auth.uid() AND linked_patient_id = public.routine_tasks.patient_id
+        )
+    );
+
+-- Patient Tasks Policies
+DROP POLICY IF EXISTS "Patient tasks viewable by patient and caregiver" ON public.patient_tasks;
+CREATE POLICY "Patient tasks viewable by patient and caregiver"
+    ON public.patient_tasks FOR SELECT
+    USING (
+        auth.uid() = patient_id OR 
+        EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = auth.uid() AND linked_patient_id = public.patient_tasks.patient_id
+        )
+    );
+
+DROP POLICY IF EXISTS "Patient tasks manageable by patient and caregiver" ON public.patient_tasks;
+CREATE POLICY "Patient tasks manageable by patient and caregiver"
+    ON public.patient_tasks FOR ALL
+    USING (
+        auth.uid() = patient_id OR 
+        EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = auth.uid() AND linked_patient_id = public.patient_tasks.patient_id
         )
     );
 
@@ -252,4 +295,24 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.link_patient_with_code(TEXT, UUID) TO authenticated, anon;
+
+-- Enable Realtime replication for dynamic tasks and family members
+DO $$
+BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.patient_tasks;
+  EXCEPTION WHEN duplicate_object THEN
+    NULL;
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.routine_tasks;
+  EXCEPTION WHEN duplicate_object THEN
+    NULL;
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.family_members;
+  EXCEPTION WHEN duplicate_object THEN
+    NULL;
+  END;
+END $$;
 

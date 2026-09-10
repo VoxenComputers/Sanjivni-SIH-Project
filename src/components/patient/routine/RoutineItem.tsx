@@ -54,10 +54,10 @@ export const RoutineItem: React.FC<RoutineItemProps> = ({ task, onToggle }) => {
     }
   };
 
-  // Strictly pull localized title and description from i18n
+  // Strictly pull localized title and description from i18n or custom caregiver notes
   const taskTitle = task.titleKey ? t(task.titleKey) : task.title;
-  const taskDesc = task.descKey ? t(task.descKey) : task.description;
-  const spokenText = `${taskTitle}. ${taskDesc}. ${task.timeStr}.`;
+  const taskDesc = task.notes || (task.descKey ? t(task.descKey) : task.description) || 'Daily routine activity';
+  const spokenText = `${taskTitle}. ${taskDesc}. ${task.timeStr || task.time}.`;
 
   return (
     <div
@@ -104,7 +104,7 @@ export const RoutineItem: React.FC<RoutineItemProps> = ({ task, onToggle }) => {
                   : 'bg-stone-100 dark:bg-stone-700 text-stone-700 dark:text-stone-200 border-stone-300 dark:border-stone-600'
               }`}
             >
-              {task.timeStr}
+              {task.timeStr || task.time || task.time_slot || '09:00 AM'}
             </span>
 
             <h4
