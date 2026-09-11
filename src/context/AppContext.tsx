@@ -1241,7 +1241,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const taskName = task.titleKey ? t(task.titleKey) : task.title;
     const timeStr = task.time_slot || task.timeStr || task.time || 'scheduled time';
     const spokenReminder = `Reminder: It is time for ${taskName} scheduled at ${timeStr}.`;
-    speakText(spokenReminder, { targetLanguageCode: language || 'hi-IN' }).catch(() => {});
+    speakText(spokenReminder).catch(() => {});
     return deviceNotifications.triggerTaskReminder(taskName, task.timeStr);
   };
 

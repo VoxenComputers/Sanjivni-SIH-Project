@@ -13,7 +13,7 @@ export const SOSAlertModal: React.FC = () => {
     if (geofence.sosActive) {
       soundFx.startSiren();
       const alertSpeech = `Emergency alert! Patient ${patient.name} has exited the designated safe zone. Last known location: ${geofence.currentLocation.currentAddress || 'outside boundary'}.`;
-      speak(alertSpeech, { targetLanguageCode: 'hi-IN' });
+      speak(alertSpeech);
     }
     return () => {
       soundFx.stopSiren();

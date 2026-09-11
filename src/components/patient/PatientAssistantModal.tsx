@@ -248,7 +248,7 @@ export const PatientAssistantModal: React.FC = () => {
 
       setMessages((prev) => [...prev, botMsg]);
       if (autoSpeak) {
-        speak(botMsg.text, { targetLanguageCode: language || 'hi-IN' });
+        speak(botMsg.text);
       }
     } catch (err) {
       console.warn('[Patient AI] Chat error:', err);
@@ -260,7 +260,7 @@ export const PatientAssistantModal: React.FC = () => {
       };
       setMessages((prev) => [...prev, fallbackMsg]);
       if (autoSpeak) {
-        speak(fallbackMsg.text, { targetLanguageCode: language || 'hi-IN' });
+        speak(fallbackMsg.text);
       }
     } finally {
       setIsTyping(false);
@@ -354,7 +354,7 @@ export const PatientAssistantModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleToggleAutoSpeak}
-                  title={autoSpeak ? 'Auto-Voice readout is ON (Sarvam Shubh bulbul:v3)' : 'Auto-Voice readout is muted'}
+                  title={autoSpeak ? 'Auto-Voice readout is ON (Sarvam AI & Browser Fallback)' : 'Auto-Voice readout is muted'}
                   className={`px-3 py-2 rounded-2xl border-2 flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${
                     autoSpeak
                       ? 'bg-white/20 hover:bg-white/30 text-white border-white/40 shadow-sm'

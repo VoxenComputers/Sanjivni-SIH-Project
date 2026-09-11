@@ -1,22 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  speakText,
-  stopSpeech,
+  playSarvamTts,
+  stopAudio,
   subscribeToTtsState,
   isSpeakingNow,
-  SarvamTtsOptions,
 } from '../services/sarvamTts';
 
 export interface UseTtsReturn {
-  speak: (text: string, options?: SarvamTtsOptions) => Promise<void>;
+  speak: (text: string) => Promise<boolean>;
   stop: () => void;
   isSpeaking: boolean;
 }
 
 /**
- * Global React Hook for standardized Text-to-Speech (TTS)
- * Powered by Sarvam AI "Shubh" Voice (bulbul:v3)
- * Reactively tracks global speaking state for live UI audio indicators
+ * React Hook for Sarvam AI Bulbul v3 Text-to-Speech (TTS)
+ * Reactively tracks audio playback state for UI speaker indicators
  */
 export const useTts = (): UseTtsReturn => {
   const [isSpeaking, setIsSpeaking] = useState<boolean>(() => isSpeakingNow());
@@ -38,13 +36,13 @@ export const useTts = (): UseTtsReturn => {
     };
   }, []);
 
-  const speak = useCallback(async (text: string, options?: SarvamTtsOptions): Promise<void> => {
-    if (!text || !text.trim()) return;
-    await speakText(text, options);
+  const speak = useCallback(async (text: string): Promise<boolean> => {
+    if (!text || !text.trim()) return false;
+    return await playSarvamTts(text);
   }, []);
 
   const stop = useCallback((): void => {
-    stopSpeech();
+    stopAudio();
   }, []);
 
   return {

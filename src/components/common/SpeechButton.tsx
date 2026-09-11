@@ -42,26 +42,13 @@ export const SpeechButton: React.FC<SpeechButtonProps> = ({
     }
 
     setIsLoading(true);
+    setIsCurrentSpeaking(true);
     try {
-      await speak(text, {
-        targetLanguageCode: language || 'hi-IN',
-        speaker: 'shubh',
-        model: 'bulbul:v3',
-        pace: 1.0,
-        speechSampleRate: 22050,
-        onStart: () => {
-          setIsLoading(false);
-          setIsCurrentSpeaking(true);
-        },
-        onEnd: () => {
-          setIsLoading(false);
-          setIsCurrentSpeaking(false);
-        },
-        onError: () => {
-          setIsLoading(false);
-          setIsCurrentSpeaking(false);
-        },
-      });
+      const success = await speak(text);
+      setIsLoading(false);
+      if (!success) {
+        setIsCurrentSpeaking(false);
+      }
     } catch {
       setIsLoading(false);
       setIsCurrentSpeaking(false);
