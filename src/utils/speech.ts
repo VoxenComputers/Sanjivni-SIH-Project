@@ -106,7 +106,7 @@ export const getPreferredVoice = (
   return voices.find(v => v.lang.toLowerCase().startsWith('en')) || voices[0];
 };
 
-import { playSarvamSpeech, stopSarvamSpeech, isSarvamSpeaking } from '../services/sarvamTts';
+import { speakText, stopSpeech, isSpeakingNow } from '../services/sarvamTts';
 
 class SpeechSynthesizer {
   private isAvailable: boolean;
@@ -136,7 +136,7 @@ class SpeechSynthesizer {
   /**
    * Browser SpeechSynthesis fallback implementation
    */
-  private speakWithBrowserSynth(text: string, onStart?: () => void, onEnd?: () => void, langCode: string = 'en'): void {
+  private speakWithBrowserSynth(text: string, onStart?: () => void, onEnd?: () => void, langCode: string = 'hi-IN'): void {
     if (!this.isAvailable) {
       onEnd?.();
       return;
@@ -146,11 +146,11 @@ class SpeechSynthesizer {
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.88;
-      utterance.pitch = 1.02;
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
 
       const availableVoices = this.voices.length > 0 ? this.voices : window.speechSynthesis.getVoices();
-      const resolvedLang = langCode || (typeof window !== 'undefined' ? localStorage.getItem('smriti_language') || 'en' : 'en');
+      const resolvedLang = langCode || (typeof window !== 'undefined' ? localStorage.getItem('smriti_language') || 'hi-IN' : 'hi-IN');
       const preferredVoice = getPreferredVoice(availableVoices, resolvedLang);
 
       if (preferredVoice) {
@@ -182,61 +182,43 @@ class SpeechSynthesizer {
 
   /**
    * Primary Speak Method:
-   * Uses Sarvam AI (model: bulbul:v3) for natural Indian voices and regional dialects,
+   * Uses Sarvam AI (model: bulbul:v3, speaker: shubh) for natural Indian voices and regional dialects,
    * falling back cleanly to browser speech synthesis if offline or unconfigured.
    */
-  async speak(text: string, onStart?: () => void, onEnd?: () => void, langCode: string = 'en'): Promise<void> {
+  async speak(text: string, onStart?: () => void, onEnd?: () => void, langCode: string = 'hi-IN'): Promise<void> {
     if (typeof document !== 'undefined' && document.hidden) {
       onEnd?.();
       return;
     }
 
-    // Stop any previous speech playback
-    this.stop();
-
-    const apiKey = import.meta.env.VITE_SARVAM_API_KEY;
-    const hasSarvamKey = !!apiKey && apiKey !== 'your-sarvam-api-key';
-
-    if (hasSarvamKey) {
-      let fallbackTriggered = false;
-      const triggerFallback = () => {
-        if (!fallbackTriggered) {
-          fallbackTriggered = true;
+    try {
+      await speakText(text, {
+        targetLanguageCode: langCode,
+        speaker: 'shubh',
+        model: 'bulbul:v3',
+        pace: 1.0,
+        speechSampleRate: 22050,
+        onStart,
+        onEnd,
+        onError: (err) => {
+          console.warn('[Speech] Sarvam playback error, fallback engaged:', err);
           this.speakWithBrowserSynth(text, onStart, onEnd, langCode);
-        }
-      };
-
-      try {
-        await playSarvamSpeech(text, langCode, {
-          onStart,
-          onEnd,
-          onError: (err) => {
-            console.warn('[Speech] Sarvam TTS audio playback notice, falling back to browser synthesis:', err);
-            triggerFallback();
-          },
-        });
-        return;
-      } catch (err: any) {
-        console.warn('[Speech] Sarvam TTS request notice, falling back to browser synthesis:', err?.message || err);
-        triggerFallback();
-        return;
-      }
+        },
+      });
+    } catch (err) {
+      console.warn('[Speech] Sarvam speakText error, fallback to browser synth:', err);
+      this.speakWithBrowserSynth(text, onStart, onEnd, langCode);
     }
-
-    // Fallback to browser SpeechSynthesis
-    this.speakWithBrowserSynth(text, onStart, onEnd, langCode);
   }
 
   stop(): void {
-    stopSarvamSpeech();
-    if (this.isAvailable) {
-      window.speechSynthesis.cancel();
-    }
+    stopSpeech();
   }
 
   isSpeaking(): boolean {
-    return isSarvamSpeaking() || (this.isAvailable ? window.speechSynthesis.speaking : false);
+    return isSpeakingNow();
   }
 }
 
 export const speechSynth = new SpeechSynthesizer();
+

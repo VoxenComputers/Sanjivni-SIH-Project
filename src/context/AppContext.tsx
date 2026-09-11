@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { soundFx } from '../utils/audio';
 import { SupportedLanguage, getTranslation, getLocalizedFamily, getLocalizedPatient } from '../utils/i18n';
 import { deviceNotifications } from '../utils/notifications';
+import { speakText } from '../services/sarvamTts';
 import { NERStateId } from '../utils/nerData';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
@@ -1238,6 +1239,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const scheduleTaskReminder = (task: RoutineTask): boolean => {
     soundFx.playClickSound();
     const taskName = task.titleKey ? t(task.titleKey) : task.title;
+    const timeStr = task.time_slot || task.timeStr || task.time || 'scheduled time';
+    const spokenReminder = `Reminder: It is time for ${taskName} scheduled at ${timeStr}.`;
+    speakText(spokenReminder, { targetLanguageCode: language || 'hi-IN' }).catch(() => {});
     return deviceNotifications.triggerTaskReminder(taskName, task.timeStr);
   };
 

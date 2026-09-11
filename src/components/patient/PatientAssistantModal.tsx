@@ -12,12 +12,15 @@ import {
   Pill, 
   Users, 
   Smile,
-  ShieldCheck
+  ShieldCheck,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { soundFx } from '../../utils/audio';
 import { SpeechButton } from '../common/SpeechButton';
 import { sendPatientAiChat, PatientAiResponse } from '../../services/patientAiService';
+import { useTts } from '../../hooks/useTts';
 
 interface ChatMessage {
   id: string;
@@ -44,6 +47,23 @@ export const PatientAssistantModal: React.FC = () => {
   const [inputText, setInputText] = useState<string>('');
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [isListening, setIsListening] = useState<boolean>(false);
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(() => {
+    return localStorage.getItem('sanjivni_auto_speak') !== 'false';
+  });
+
+  const { speak, stop, isSpeaking } = useTts();
+
+  const handleToggleAutoSpeak = () => {
+    soundFx.playClickSound();
+    setAutoSpeak((prev) => {
+      const next = !prev;
+      localStorage.setItem('sanjivni_auto_speak', String(next));
+      if (!next) {
+        stop();
+      }
+      return next;
+    });
+  };
 
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -78,15 +98,18 @@ export const PatientAssistantModal: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isOpen && isListening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
+    if (!isOpen) {
+      stop();
+      if (isListening) {
+        if (recognitionRef.current) {
+          try {
+            recognitionRef.current.stop();
+          } catch {}
+        }
+        setIsListening(false);
       }
-      setIsListening(false);
     }
-  }, [isOpen, isListening]);
+  }, [isOpen, isListening, stop]);
 
   /**
    * Toggle Voice Input:
@@ -224,6 +247,9 @@ export const PatientAssistantModal: React.FC = () => {
       };
 
       setMessages((prev) => [...prev, botMsg]);
+      if (autoSpeak) {
+        speak(botMsg.text, { targetLanguageCode: language || 'hi-IN' });
+      }
     } catch (err) {
       console.warn('[Patient AI] Chat error:', err);
       const fallbackMsg: ChatMessage = {
@@ -233,6 +259,9 @@ export const PatientAssistantModal: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, fallbackMsg]);
+      if (autoSpeak) {
+        speak(fallbackMsg.text, { targetLanguageCode: language || 'hi-IN' });
+      }
     } finally {
       setIsTyping(false);
     }
@@ -321,16 +350,44 @@ export const PatientAssistantModal: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  soundFx.playClickSound();
-                  setIsOpen(false);
-                }}
-                className="w-11 h-11 rounded-2xl bg-emerald-900/80 hover:bg-emerald-700 flex items-center justify-center text-white border border-emerald-500/60 transition-colors cursor-pointer"
-                aria-label="Close Assistant"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleAutoSpeak}
+                  title={autoSpeak ? 'Auto-Voice readout is ON (Sarvam Shubh bulbul:v3)' : 'Auto-Voice readout is muted'}
+                  className={`px-3 py-2 rounded-2xl border-2 flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${
+                    autoSpeak
+                      ? 'bg-white/20 hover:bg-white/30 text-white border-white/40 shadow-sm'
+                      : 'bg-emerald-950/60 hover:bg-emerald-950 text-emerald-300 border-emerald-700/60'
+                  }`}
+                >
+                  {autoSpeak ? (
+                    <>
+                      <Volume2 className={`w-4 h-4 text-amber-300 ${isSpeaking ? 'animate-bounce' : ''}`} />
+                      <span className="hidden sm:inline">Auto-Voice: ON</span>
+                      <span className="sm:hidden">Voice ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX className="w-4 h-4 text-emerald-300/70" />
+                      <span className="hidden sm:inline">Auto-Voice: OFF</span>
+                      <span className="sm:hidden">Voice OFF</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => {
+                    soundFx.playClickSound();
+                    stop();
+                    setIsOpen(false);
+                  }}
+                  className="w-11 h-11 rounded-2xl bg-emerald-900/80 hover:bg-emerald-700 flex items-center justify-center text-white border border-emerald-500/60 transition-colors cursor-pointer"
+                  aria-label="Close Assistant"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
 
             {/* Reassurance & Caregiver Connected Bar */}

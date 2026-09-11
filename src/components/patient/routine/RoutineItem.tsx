@@ -67,8 +67,9 @@ export const RoutineItem: React.FC<RoutineItemProps> = ({ task, onToggle }) => {
 
   // Strictly pull localized title and description from i18n or custom caregiver notes
   const taskTitle = task.titleKey ? t(task.titleKey) : task.title;
-  const taskDesc = task.notes || (task.descKey ? t(task.descKey) : task.description) || 'Daily routine activity';
-  const spokenText = `${taskTitle}. ${taskDesc}. ${task.timeStr || task.time}.`;
+  const timeSlot = task.time_slot || task.timeStr || task.time || 'Scheduled';
+  const taskDesc = task.notes || (task.descKey ? t(task.descKey) : task.description) || '';
+  const spokenText = `${timeSlot}: ${taskTitle}. ${taskDesc}`.trim();
 
   return (
     <div

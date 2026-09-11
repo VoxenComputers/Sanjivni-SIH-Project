@@ -1,20 +1,26 @@
 import React, { useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { soundFx } from '../../utils/audio';
+import { useTts } from '../../hooks/useTts';
 import { AlertTriangle, PhoneCall, Navigation, MessageSquare, ShieldAlert, X } from 'lucide-react';
 
 export const SOSAlertModal: React.FC = () => {
   const { geofence, dismissSOS, patient } = useApp();
+  const { speak, stop } = useTts();
 
-  // Continuous siren audio loop while SOS is active
+  // Continuous siren audio loop and spoken emergency broadcast while SOS is active
   useEffect(() => {
     if (geofence.sosActive) {
       soundFx.startSiren();
+      const alertSpeech = `Emergency alert! Patient ${patient.name} has exited the designated safe zone. Last known location: ${geofence.currentLocation.currentAddress || 'outside boundary'}.`;
+      speak(alertSpeech, { targetLanguageCode: 'hi-IN' });
     }
     return () => {
       soundFx.stopSiren();
+      stop();
     };
-  }, [geofence.sosActive]);
+  }, [geofence.sosActive, patient.name, geofence.currentLocation.currentAddress, speak, stop]);
+
 
   if (!geofence.sosActive) return null;
 
@@ -43,8 +49,11 @@ export const SOSAlertModal: React.FC = () => {
           </div>
 
           <button
-            onClick={dismissSOS}
-            className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white"
+            onClick={() => {
+              stop();
+              dismissSOS();
+            }}
+            className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white cursor-pointer"
             title="Dismiss Alert"
           >
             <X className="w-6 h-6" />
