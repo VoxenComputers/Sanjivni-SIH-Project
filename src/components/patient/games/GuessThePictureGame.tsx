@@ -5,6 +5,8 @@ import { speechSynth } from '../../../utils/speech';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import { getGameAssetUrl, REGION_ASSETS, normalizeRegionId, getFallbackGameAssetUrl } from '../../../utils/assetManager';
+import { supabaseDb } from '../../../services/supabaseDb';
+import { calculatePrototypeScore } from '../../../utils/cognitiveMetrics';
 import { SpeechButton } from '../../common/SpeechButton';
 import { Mascot } from '../../common/Mascot';
 import { ArrowLeft, RotateCcw, CheckCircle2, Award, ChevronRight, Sparkles, AlertCircle } from 'lucide-react';
@@ -213,7 +215,7 @@ const CULTURAL_METADATA: Record<string, { name: string; description: string; fun
 
 export const GuessThePictureGame: React.FC<GuessThePictureGameProps> = ({ onBack }) => {
   const { user } = useAuth();
-  const { recordGameCompletion, t, selectedRegion } = useApp();
+  const { recordGameCompletion, t, selectedRegion, activePatientId } = useApp();
 
   // Robust region sanitization supporting all 8 North-Eastern states
   const rawRegion = user?.user_metadata?.region || (user as any)?.region || selectedRegion || 'assam';
@@ -304,7 +306,7 @@ export const GuessThePictureGame: React.FC<GuessThePictureGameProps> = ({ onBack
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     soundFx.playClickSound();
     if (currentIndex < questions.length - 1) {
       setCurrentIndex((i) => i + 1);
@@ -319,7 +321,34 @@ export const GuessThePictureGame: React.FC<GuessThePictureGameProps> = ({ onBack
         origin: { y: 0.5 },
       });
       const finalAccuracy = Math.round((score / questions.length) * 100);
+      const duration = 45;
+      const totalTries = questions.length;
+
+      const metric = calculatePrototypeScore({
+        accuracy: finalAccuracy,
+        timeTakenSec: duration,
+        expectedTimeSec: 60,
+        tries: totalTries,
+      });
+
+      const patientId =
+        activePatientId ||
+        (typeof window !== 'undefined'
+          ? localStorage.getItem('sanjivni_patient_id') || localStorage.getItem('smriti_linked_patient_id')
+          : null) ||
+        supabaseDb.DEFAULT_PATIENT_ID;
+
+      await supabaseDb.recordGameSession({
+        patient_id: patientId,
+        game_type: 'photo_quiz',
+        accuracy_percentage: finalAccuracy,
+        time_taken_seconds: duration,
+        tries_count: totalTries,
+        calculated_score: metric.totalScore,
+      });
+
       recordGameCompletion(`Guess Picture (${safeRegion})`, 100 + score * 25, questions.length, 45, finalAccuracy);
+      window.dispatchEvent(new CustomEvent('sanjivni:game-completed'));
     }
   };
 

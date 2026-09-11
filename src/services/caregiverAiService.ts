@@ -211,7 +211,7 @@ export const buildPatientHealthContext = async (
       { id: 'g1', game: 'Memory Match Pairs', date: 'Today', score: 68, timeSeconds: 62, accuracy: 72 },
       { id: 'g2', game: 'Guess The Cultural Picture', date: 'Yesterday', score: 92, timeSeconds: 38, accuracy: 94 },
       { id: 'g3', game: 'Match The Order', date: '2 days ago', score: 88, timeSeconds: 44, accuracy: 88 },
-      { id: 'g4', game: 'Spaced Retrieval Trivia', date: '3 days ago', score: 85, timeSeconds: 50, accuracy: 86 },
+      { id: 'g4', game: 'Family Trivia', date: '3 days ago', score: 85, timeSeconds: 50, accuracy: 86 },
     ];
   }
 

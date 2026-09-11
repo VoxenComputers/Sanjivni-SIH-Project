@@ -29,8 +29,10 @@ import {
   fetchPatientTelemetry,
   savePatientTelemetry,
   recordGameSessionInDb,
+  recordGameSession,
   PatientProfileRecord,
 } from '../lib/supabaseDb';
+import { calculatePrototypeScore } from '../utils/cognitiveMetrics';
 import {
   LocationData,
   WeatherData,
@@ -45,6 +47,8 @@ import {
 } from '../utils/locationWeather';
 
 export type { SupportedLanguage, NERStateId, LocationData, WeatherData };
+
+export const DEFAULT_PATIENT_ID = '9e3ba6c7-fb34-4927-b07b-01bf059ac04b';
 
 export interface FamilyMember {
   id: string;
@@ -440,13 +444,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Active Patient ID resolution (for patient view and caregiver view)
   const activePatientId = useMemo<string | null>(() => {
-    // 1. If caregiver mode or user is caregiver: MUST use linked patient ID
-    if (userRole === 'caregiver' || mode === 'caregiver') {
-      if (typeof window !== 'undefined') {
-        const linkedId = localStorage.getItem('smriti_linked_patient_id');
-        if (linkedId && linkedId !== 'demo-patient-koka' && isValidUuid(linkedId)) return linkedId;
-      }
-      return '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+    // 1. Check sanjivni_patient_id from localStorage
+    if (typeof window !== 'undefined') {
+      const sanjivniId = localStorage.getItem('sanjivni_patient_id');
+      if (sanjivniId && isValidUuid(sanjivniId)) return sanjivniId;
+
+      const linkedId = localStorage.getItem('smriti_linked_patient_id');
+      if (linkedId && linkedId !== 'demo-patient-koka' && isValidUuid(linkedId)) return linkedId;
     }
 
     // 2. If authenticated Supabase user (patient)
@@ -470,12 +474,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // ignore
         }
       }
-      const linkedId = localStorage.getItem('smriti_linked_patient_id');
-      if (linkedId && linkedId !== 'demo-patient-koka' && isValidUuid(linkedId)) return linkedId;
     }
 
-    return '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+    return DEFAULT_PATIENT_ID;
   }, [auth.user?.id, auth.appUser?.id, userRole, mode]);
+
+  // Synchronize canonical default patient ID into localStorage on initial load
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const existing = localStorage.getItem('sanjivni_patient_id');
+      if (!existing || !isValidUuid(existing)) {
+        localStorage.setItem('sanjivni_patient_id', DEFAULT_PATIENT_ID);
+      }
+      const existingLinked = localStorage.getItem('smriti_linked_patient_id');
+      if (!existingLinked || !isValidUuid(existingLinked) || existingLinked === 'demo-patient-koka' || existingLinked === '70fde7c0-c85e-4c3d-bc49-8ea172128ebd') {
+        localStorage.setItem('smriti_linked_patient_id', DEFAULT_PATIENT_ID);
+      }
+    }
+  }, []);
 
   const [isLoadingFamily, setIsLoadingFamily] = useState<boolean>(false);
 
@@ -1542,9 +1558,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newMmse = calculateDynamicMmse(updatedTasks, accuracy);
     setMmseScore(newMmse);
 
+    // Calculate exploratory prototype telemetry score (10-30 scale)
+    const metric = calculatePrototypeScore({
+      accuracy,
+      timeTakenSec: timeSec,
+      expectedTimeSec: 45,
+      tries: Math.max(1, moves),
+    });
+
     // Sync cognitive session, routine game task, and telemetry to Supabase
-    const targetId = activePatientId || (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) || '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+    const targetId =
+      activePatientId ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('sanjivni_patient_id') || localStorage.getItem('smriti_linked_patient_id')
+        : null) ||
+      DEFAULT_PATIENT_ID;
     if (targetId && isValidUuid(targetId)) {
+      // 1. Record structured game session with telemetry into game_sessions table
+      recordGameSession({
+        patient_id: targetId,
+        game_type: gameName,
+        accuracy_percentage: accuracy,
+        time_taken_seconds: timeSec,
+        tries_count: Math.max(1, moves),
+        calculated_score: metric.totalScore,
+      }).catch(err => {
+        console.warn('[AppContext] recordGameSession notice:', err);
+      });
+
+      // 2. Maintain routine & overall MMSE sync in patient_tasks
       recordGameSessionInDb(
         targetId,
         { game: gameName, score, moves, timeSeconds: timeSec, accuracy },
@@ -1552,6 +1594,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ).catch(err => {
         console.warn('[AppContext] recordGameSessionInDb sync notice:', err);
       });
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sanjivni:game-completed'));
     }
   };
 

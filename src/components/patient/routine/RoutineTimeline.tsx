@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp, RoutineTask } from '../../../context/AppContext';
-import { fetchPatientTasks, toggleTaskCompletion, isValidUuid } from '../../../lib/supabaseDb';
+import { fetchPatientTasks, toggleTaskCompletion, isValidUuid, DEFAULT_PATIENT_ID } from '../../../lib/supabaseDb';
 import { supabase } from '../../../lib/supabase';
 import { RoutineItem } from './RoutineItem';
 import { Mascot } from '../../common/Mascot';
@@ -56,12 +56,16 @@ export const RoutineTimeline: React.FC = () => {
       return activePatientId;
     }
     if (typeof window !== 'undefined') {
+      const savedSanjivni = localStorage.getItem('sanjivni_patient_id');
+      if (savedSanjivni && isValidUuid(savedSanjivni)) {
+        return savedSanjivni;
+      }
       const savedLinked = localStorage.getItem('smriti_linked_patient_id');
       if (savedLinked && savedLinked !== 'demo-patient-koka' && isValidUuid(savedLinked)) {
         return savedLinked;
       }
     }
-    return null;
+    return DEFAULT_PATIENT_ID;
   }, [activePatientId]);
 
   // 1. Fetch Patient Tasks from Supabase Database (filtered by patient_id)

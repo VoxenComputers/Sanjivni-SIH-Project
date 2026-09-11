@@ -5,6 +5,7 @@ import { SOSAlertModal } from './SOSAlertModal';
 import { CaregiverChatbot } from './CaregiverChatbot';
 import { TaskManager } from './TaskManager';
 import { FamilyManager } from './FamilyManager';
+import { CognitiveTrajectory } from './CognitiveTrajectory';
 import { deviceNotifications } from '../../utils/notifications';
 import { soundFx } from '../../utils/audio';
 import { getTranslation } from '../../utils/i18n';
@@ -46,6 +47,7 @@ export const CaregiverDashboard: React.FC = () => {
     toggleTaskCompletion, 
     streak, 
     mmseScore,
+    activePatientId,
     t, 
     language 
   } = useApp();
@@ -99,18 +101,6 @@ export const CaregiverDashboard: React.FC = () => {
 
   const completedTasks = tasks.filter((t) => t.isCompleted ?? t.completed).length;
   const taskAdherence = Math.round((completedTasks / tasks.length) * 100);
-
-  // Dynamic 30-Day MMSE (Mini-Mental State Examination) cognitive stability tracking points
-  // Normal/MCI boundary is around 24-27. Stability over 30 days is the clinical goal.
-  const mmseTrend = [
-    { day: 'Day 1', score: 24.5 },
-    { day: 'Day 5', score: 25.0 },
-    { day: 'Day 10', score: 24.8 },
-    { day: 'Day 15', score: 25.2 },
-    { day: 'Day 20', score: 25.0 },
-    { day: 'Day 25', score: 25.5 },
-    { day: 'Today', score: Number((mmseScore ?? 25.8).toFixed(1)) },
-  ];
 
   return (
     <div className="space-y-5 sm:space-y-6 pb-6">
@@ -253,62 +243,9 @@ export const CaregiverDashboard: React.FC = () => {
       <GeofencingMap />
 
       {/* Cognitive Decline & Memory Performance Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Longitudinal MMSE Cognitive Trend */}
-        <div className="duo-card p-6 space-y-4 bg-white dark:bg-stone-900 border-3 border-stone-200 dark:border-stone-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-brand-green-light dark:bg-emerald-950 border border-green-300 dark:border-emerald-800 flex items-center justify-center text-brand-green-dark dark:text-emerald-300">
-                <Brain className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-xl sm:text-2xl font-black text-brand-dark dark:text-white tracking-tight">
-                  Cognitive Stability Trajectory
-                </h3>
-                <p className="text-xs sm:text-sm font-bold text-stone-500 dark:text-stone-400">
-                  MMSE-aligned scoring over the last 30 days (Clinical Threshold: &gt;24)
-                </p>
-              </div>
-            </div>
-            <div className={`flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-full border ${
-              (mmseScore ?? 25.8) >= 24
-                ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-800'
-                : 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 border-amber-300 dark:border-amber-800'
-            }`}>
-              <TrendingUp className="w-4 h-4" />
-              <span>{(mmseScore ?? 25.8) >= 24 ? '+1.3 Pt Stable' : 'Attention Required'}</span>
-            </div>
-          </div>
-
-          {/* Visual SVG Bar / Line Chart */}
-          <div className="bg-stone-50 dark:bg-stone-800 border-2 border-stone-200 dark:border-stone-700 rounded-2xl p-4 pt-6">
-            <div className="h-44 flex items-end justify-between gap-2 px-2">
-              {mmseTrend.map((pt, i) => {
-                const heightPercent = ((pt.score - 20) / 10) * 100; // range 20 to 30
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-                    <span className="text-[11px] font-black text-stone-700 dark:text-stone-300">
-                      {pt.score}
-                    </span>
-                    <div className="w-full max-w-[36px] bg-green-100 dark:bg-emerald-950/60 rounded-t-xl overflow-hidden border border-green-300 dark:border-emerald-800 h-28 flex items-end">
-                      <div
-                        className="w-full bg-brand-green rounded-t-lg transition-all duration-500 group-hover:bg-brand-green-dark"
-                        style={{ height: `${heightPercent}%` }}
-                      />
-                    </div>
-                    <span className="text-[11px] font-bold text-stone-500 dark:text-stone-400 truncate w-full text-center">
-                      {pt.day}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 pt-2 border-t border-stone-200 dark:border-stone-700 flex items-center justify-between text-xs font-bold text-stone-500 dark:text-stone-400">
-              <span>Baseline: 24.5 (Mild MCI)</span>
-              <span className="text-brand-green-dark dark:text-emerald-400 font-extrabold">Active Neuroplasticity: Stable & Retaining</span>
-            </div>
-          </div>
-        </div>
+      <div className="space-y-6">
+        {/* Dynamic Cognitive Trajectory & Telemetry Heuristic */}
+        <CognitiveTrajectory patientId={activePatientId} />
 
         {/* Daily Task & Routine Adherence Monitor */}
         <div className="duo-card p-6 space-y-4 bg-white dark:bg-stone-900 border-3 border-stone-200 dark:border-stone-700">

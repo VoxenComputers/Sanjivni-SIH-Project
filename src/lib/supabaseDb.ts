@@ -18,6 +18,10 @@ export interface PatientProfileRecord {
 }
 
 export const DEFAULT_DEMO_PATIENT_UUID = '926f0b23-7af7-42d6-a0e0-8084dc63c6a3';
+export const DEFAULT_PATIENT_ID = '9e3ba6c7-fb34-4927-b07b-01bf059ac04b';
+
+import { mergeTrajectoryWithBaseline, CognitiveTrajectoryPoint } from '../utils/cognitiveMetrics';
+export type { CognitiveTrajectoryPoint };
 
 export const isValidUuid = (id?: string | null): boolean => {
   if (!id || typeof id !== 'string') return false;
@@ -949,37 +953,21 @@ export const DEFAULT_CORE_TASKS: Array<{
  * Seeds the 4 clean default daily routine tasks into Supabase ('patient_tasks')
  * Includes deduplication guards to prevent duplicate row clutter on repeated calls.
  */
-export const seedDefaultPatientTasks = async (patientId: string, forceReset = false): Promise<RoutineTask[]> => {
-  if (!patientId || !isValidUuid(patientId)) {
-    return DEFAULT_CORE_TASKS.map((t, i) => ({
-      id: `task-default-${i + 1}`,
-      title: t.title,
-      time: t.timeSlot,
-      timeStr: t.timeSlot,
-      time_slot: t.timeSlot,
-      period: t.period,
-      timeOfDay: t.period,
-      category: t.category,
-      type: t.type as any,
-      description: t.notes,
-      notes: t.notes,
-      isCompleted: t.completed,
-      completed: t.completed,
-    }));
-  }
+export const seedDefaultPatientTasks = async (patientId?: string, forceReset = false): Promise<RoutineTask[]> => {
+  const effectivePatientId = patientId && isValidUuid(patientId) ? patientId : DEFAULT_PATIENT_ID;
 
   try {
     // If not a forced reset, check if the patient already has routine tasks
     if (!forceReset) {
-      const { data: existingTasks } = await supabase
+      const { data: existingTasks, error: queryError } = await supabase
         .from('patient_tasks')
         .select('*')
-        .eq('patient_id', patientId)
+        .eq('patient_id', effectivePatientId)
         .neq('time_slot', 'STATS')
         .neq('icon', 'patient_telemetry')
         .neq('icon', 'game_session');
 
-      if (existingTasks && existingTasks.length > 0) {
+      if (!queryError && existingTasks && existingTasks.length > 0) {
         console.log(`[Supabase DB] Patient already has ${existingTasks.length} tasks. Skipping duplicate seeding.`);
         return existingTasks.map((row: any) => ({
           id: row.id,
@@ -1002,14 +990,14 @@ export const seedDefaultPatientTasks = async (patientId: string, forceReset = fa
       await supabase
         .from('patient_tasks')
         .delete()
-        .eq('patient_id', patientId)
+        .eq('patient_id', effectivePatientId)
         .neq('time_slot', 'STATS')
         .neq('icon', 'patient_telemetry')
         .neq('icon', 'game_session');
     }
 
     const payload = DEFAULT_CORE_TASKS.map((t) => ({
-      patient_id: patientId,
+      patient_id: effectivePatientId,
       title: t.title,
       time_slot: t.timeSlot,
       period: t.period,
@@ -1018,35 +1006,39 @@ export const seedDefaultPatientTasks = async (patientId: string, forceReset = fa
       icon: 'default',
     }));
 
-    const { data, error } = await supabase
-      .from('patient_tasks')
-      .insert(payload)
-      .select();
+    try {
+      const { data, error } = await supabase
+        .from('patient_tasks')
+        .insert(payload)
+        .select();
 
-    if (!error && data && data.length > 0) {
-      console.log(`[Supabase DB] Successfully seeded ${data.length} clean default tasks into Supabase!`);
-      return data.map((row: any) => ({
-        id: row.id,
-        title: row.title,
-        time: row.time_slot,
-        timeStr: row.time_slot,
-        time_slot: row.time_slot,
-        period: row.period || 'morning',
-        timeOfDay: row.period || 'morning',
-        category: (row.title.toLowerCase().includes('medicine') ? 'medication' : row.title.toLowerCase().includes('water') ? 'hydration' : 'game') as any,
-        type: (row.title.toLowerCase().includes('medicine') ? 'medicine' : row.title.toLowerCase().includes('water') ? 'hydration' : 'activity') as any,
-        description: row.notes || '',
-        notes: row.notes || '',
-        isCompleted: !!row.completed,
-        completed: !!row.completed,
-      }));
-    }
+      if (!error && data && data.length > 0) {
+        console.log(`[Supabase DB] Successfully seeded ${data.length} clean default tasks into Supabase!`);
+        return data.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          time: row.time_slot,
+          timeStr: row.time_slot,
+          time_slot: row.time_slot,
+          period: row.period || 'morning',
+          timeOfDay: row.period || 'morning',
+          category: (row.title.toLowerCase().includes('medicine') ? 'medication' : row.title.toLowerCase().includes('water') ? 'hydration' : 'game') as any,
+          type: (row.title.toLowerCase().includes('medicine') ? 'medicine' : row.title.toLowerCase().includes('water') ? 'hydration' : 'activity') as any,
+          description: row.notes || '',
+          notes: row.notes || '',
+          isCompleted: !!row.completed,
+          completed: !!row.completed,
+        }));
+      }
 
-    if (error) {
-      console.warn('[Supabase DB] seedDefaultPatientTasks notice:', error.message);
+      if (error) {
+        console.warn('[Supabase DB] seedDefaultPatientTasks notice (using fallback):', error.message);
+      }
+    } catch (insertErr: any) {
+      console.warn('[Supabase DB] seedDefaultPatientTasks insert caught (using fallback):', insertErr?.message);
     }
   } catch (err: any) {
-    console.warn('[Supabase DB] seedDefaultPatientTasks exception:', err?.message);
+    console.warn('[Supabase DB] seedDefaultPatientTasks exception (using fallback):', err?.message);
   }
 
   // Local fallback
@@ -1928,3 +1920,57 @@ export const recordGameSessionInDb = async (
     console.warn('[Supabase DB] recordGameSessionInDb exception:', err);
   }
 };
+
+/**
+ * 20. Game Sessions Telemetry & Cognitive Trajectory Queries
+ */
+export const recordGameSession = async (payload: {
+  patient_id: string;
+  game_type: string;
+  accuracy_percentage: number;
+  time_taken_seconds: number;
+  tries_count: number;
+  calculated_score: number;
+}) => {
+  try {
+    const { data, error } = await supabase.from('game_sessions').insert([payload]).select();
+    if (error) throw error;
+    return data?.[0];
+  } catch (err) {
+    console.error('[supabaseDb.recordGameSession] Error:', err);
+    return null;
+  }
+};
+
+export const fetchCognitiveTrajectory = async (
+  patientId?: string,
+  limit = 7
+): Promise<CognitiveTrajectoryPoint[]> => {
+  const targetId = patientId && isValidUuid(patientId) ? patientId : DEFAULT_PATIENT_ID;
+
+  try {
+    const { data, error } = await supabase
+      .from('game_sessions')
+      .select('id, calculated_score, created_at, accuracy_percentage, time_taken_seconds, tries_count, game_type')
+      .eq('patient_id', targetId)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      console.warn('[supabaseDb.fetchCognitiveTrajectory] Query notice:', error.message);
+    }
+
+    return mergeTrajectoryWithBaseline(data || []);
+  } catch (err) {
+    console.error('[supabaseDb.fetchCognitiveTrajectory] Error:', err);
+    return mergeTrajectoryWithBaseline([]);
+  }
+};
+
+export const supabaseDb = {
+  DEFAULT_PATIENT_ID,
+  recordGameSession,
+  fetchCognitiveTrajectory,
+  mergeTrajectoryWithBaseline,
+};
+

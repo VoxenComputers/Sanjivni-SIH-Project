@@ -168,29 +168,10 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
     );
   };
 
-  // Render cultural item artwork with Supabase CDN image and graceful fallback
-  const renderItemArtwork = (item: NERMemoryItem) => {
+  // Render cultural item artwork URL with Supabase CDN image and graceful fallback
+  const getItemArtworkUrl = (item: NERMemoryItem) => {
     const fileName = item.imageUrl ? item.imageUrl.split('/').pop() || '' : '';
-    const assetUrl = fileName ? getGameAssetUrl('picture-match', safeRegion, fileName) : item.imageUrl;
-
-    return (
-      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden flex items-center justify-center bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 shadow-inner">
-        <img
-          src={assetUrl}
-          alt={item.name}
-          className="w-full h-full object-cover rounded-xl"
-          onError={(e) => {
-            console.error('Failed to load memory card image:', e.currentTarget.src);
-            e.currentTarget.onerror = null;
-            if (item.imageUrl && e.currentTarget.src !== item.imageUrl) {
-              e.currentTarget.src = item.imageUrl;
-            } else {
-              e.currentTarget.src = getFallbackGameAssetUrl('picture-match');
-            }
-          }}
-        />
-      </div>
-    );
+    return fileName ? getGameAssetUrl('picture-match', safeRegion, fileName) : (item.imageUrl || getFallbackGameAssetUrl('picture-match'));
   };
 
   return (
@@ -276,10 +257,8 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Dynamic Card Grid (4 cols for 8-12 cards on desktop, 3 cols on mobile) */}
-      <div className={`grid gap-3 sm:gap-4 max-w-3xl mx-auto ${
-        cards.length <= 8 ? 'grid-cols-2 sm:grid-cols-4 max-w-2xl' : 'grid-cols-3 sm:grid-cols-4'
-      }`}>
+      {/* Accessible Large Card Grid: 2 cols on mobile, 3 on tablet, 4 on desktop */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 max-w-5xl mx-auto">
         {cards.map((card, idx) => {
           const isRevealed = card.isFlipped || card.isMatched;
 
@@ -287,7 +266,7 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
             <div
               key={card.instanceId}
               onClick={() => handleCardClick(idx)}
-              className="aspect-square perspective-1000 cursor-pointer select-none"
+              className="aspect-[4/5] min-h-[150px] md:min-h-[190px] perspective-1000 cursor-pointer select-none"
               role="button"
               tabIndex={0}
               aria-label={isRevealed ? `${card.item.name}` : `Card ${idx + 1}`}
@@ -309,27 +288,41 @@ export const MemoryMatchGame: React.FC<MemoryMatchGameProps> = ({ onBack }) => {
                 }`}
               >
                 {/* Back Face (When Hidden) */}
-                <div className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-2 rounded-2xl sm:rounded-3xl bg-[#FAF8F5] dark:bg-[#1C1917]">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
-                    <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
+                <div className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-3 rounded-2xl sm:rounded-3xl bg-[#FAF8F5] dark:bg-[#1C1917] border-2 border-dashed border-emerald-500/30">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 border-2 border-emerald-500 flex items-center justify-center text-emerald-700 dark:text-emerald-400 shadow-sm">
+                    <Sparkles className="w-8 h-8 sm:w-9 sm:h-9" />
                   </div>
-                  <span className="text-xs sm:text-sm font-black text-stone-600 dark:text-stone-300 mt-2 text-center leading-none">
+                  <span className="text-sm sm:text-base font-black text-stone-700 dark:text-stone-200 mt-2.5 text-center tracking-wider">
                     SANJIVNI
                   </span>
                 </div>
 
-                {/* Front Face (When Flipped) */}
-                <div className="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-between p-2 sm:p-3 rounded-2xl sm:rounded-3xl bg-white dark:bg-stone-800 text-center">
-                  <div className="flex-1 flex items-center justify-center">
-                    {renderItemArtwork(card.item)}
+                {/* Front Face (When Flipped) - Photo occupies 85-90% of card area */}
+                <div className="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-between p-2.5 sm:p-3.5 rounded-2xl sm:rounded-3xl bg-white dark:bg-stone-800 text-center">
+                  <div className="relative w-full flex-1 rounded-xl overflow-hidden border-2 border-emerald-500/50 shadow-md bg-stone-100 dark:bg-stone-900">
+                    <img
+                      src={getItemArtworkUrl(card.item)}
+                      alt={card.item.name}
+                      className="w-full h-full object-cover rounded-xl shadow-md transition-transform duration-200 hover:scale-105 active:scale-95"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        if (card.item.imageUrl && e.currentTarget.src !== card.item.imageUrl) {
+                          e.currentTarget.src = card.item.imageUrl;
+                        } else {
+                          e.currentTarget.src = getFallbackGameAssetUrl('picture-match');
+                        }
+                      }}
+                    />
                   </div>
-                  <div className="w-full">
-                    <p className="text-xs sm:text-sm font-black text-stone-900 dark:text-white leading-tight line-clamp-1">
+                  <div className="w-full pt-1.5 sm:pt-2">
+                    <p className="text-base sm:text-lg font-semibold text-stone-900 dark:text-white leading-tight truncate">
                       {card.item.name}
                     </p>
-                    <p className="text-[10px] sm:text-xs font-extrabold text-stone-500 dark:text-stone-400 line-clamp-1">
-                      {card.item.localName}
-                    </p>
+                    {card.item.localName && card.item.localName !== card.item.name && (
+                      <p className="text-xs sm:text-sm font-bold text-stone-500 dark:text-stone-400 truncate">
+                        {card.item.localName}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

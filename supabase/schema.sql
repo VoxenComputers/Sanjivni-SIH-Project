@@ -314,5 +314,34 @@ BEGIN
   EXCEPTION WHEN duplicate_object THEN
     NULL;
   END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.game_sessions;
+  EXCEPTION WHEN duplicate_object THEN
+    NULL;
+  END;
 END $$;
+
+-- 7. Game Sessions (Cognitive Stability Trajectory & Telemetry Heuristics)
+CREATE TABLE IF NOT EXISTS public.game_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL,
+    game_type TEXT NOT NULL,
+    accuracy_percentage NUMERIC NOT NULL,
+    time_taken_seconds INTEGER NOT NULL,
+    tries_count INTEGER NOT NULL DEFAULT 1,
+    calculated_score NUMERIC(4, 1) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_sessions_patient_created 
+ON public.game_sessions (patient_id, created_at DESC);
+
+-- Enable RLS and permissive policy for authenticated / anon in development
+ALTER TABLE public.game_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read-write for game_sessions in development"
+ON public.game_sessions FOR ALL
+USING (true)
+WITH CHECK (true);
+
 

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { fetchPatientTasks, fetchFamilyMembers, isValidUuid } from '../lib/supabaseDb';
+import { fetchPatientTasks, fetchFamilyMembers, isValidUuid, DEFAULT_PATIENT_ID } from '../lib/supabaseDb';
 import { RoutineTask, FamilyMember } from '../context/AppContext';
 import { getGeminiApiKey, GEMINI_MODEL_CASCADE } from './geminiConfig';
 
@@ -102,7 +102,7 @@ export const buildPatientChatContext = async (
 
   // 1. Live Tasks Retrieval
   let tasks: RoutineTask[] = [];
-  const targetId = patientId && isValidUuid(patientId) ? patientId : '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+  const targetId = patientId && isValidUuid(patientId) ? patientId : DEFAULT_PATIENT_ID;
   try {
     tasks = await fetchPatientTasks(targetId);
   } catch (err) {

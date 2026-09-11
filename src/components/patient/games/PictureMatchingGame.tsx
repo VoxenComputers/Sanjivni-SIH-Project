@@ -4,6 +4,8 @@ import { soundFx } from '../../../utils/audio';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import { getGameAssetUrl, REGION_ASSETS, normalizeRegionId, getFallbackGameAssetUrl } from '../../../utils/assetManager';
+import { supabaseDb } from '../../../services/supabaseDb';
+import { calculatePrototypeScore } from '../../../utils/cognitiveMetrics';
 import { SpeechButton } from '../../common/SpeechButton';
 import { Mascot } from '../../common/Mascot';
 import { ArrowLeft, RotateCcw, Award, Sparkles, CheckCircle2 } from 'lucide-react';
@@ -23,7 +25,7 @@ interface CardItem {
 
 export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack }) => {
   const { user } = useAuth();
-  const { recordGameCompletion, t, selectedRegion } = useApp();
+  const { recordGameCompletion, t, selectedRegion, activePatientId } = useApp();
 
   // Robust region sanitization supporting all 8 North-Eastern states
   const rawRegion = user?.user_metadata?.region || (user as any)?.region || selectedRegion || 'assam';
@@ -158,7 +160,7 @@ export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack
     }
   };
 
-  const handleVictory = () => {
+  const handleVictory = async () => {
     setIsWon(true);
     soundFx.playSuccessChime();
     confetti({
@@ -166,7 +168,36 @@ export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack
       spread: 70,
       origin: { y: 0.6 },
     });
-    recordGameCompletion(`Picture Match (${safeRegion})`, 120, moves + 1, elapsedSeconds, 95);
+
+    const userAccuracy = 95;
+    const duration = elapsedSeconds;
+    const totalTries = moves + 1;
+
+    const metric = calculatePrototypeScore({
+      accuracy: userAccuracy,
+      timeTakenSec: duration,
+      expectedTimeSec: 60,
+      tries: totalTries,
+    });
+
+    const patientId =
+      activePatientId ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('sanjivni_patient_id') || localStorage.getItem('smriti_linked_patient_id')
+        : null) ||
+      supabaseDb.DEFAULT_PATIENT_ID;
+
+    await supabaseDb.recordGameSession({
+      patient_id: patientId,
+      game_type: 'cultural_memory',
+      accuracy_percentage: userAccuracy,
+      time_taken_seconds: duration,
+      tries_count: totalTries,
+      calculated_score: metric.totalScore,
+    });
+
+    recordGameCompletion(`Picture Match (${safeRegion})`, 120, totalTries, duration, userAccuracy);
+    window.dispatchEvent(new CustomEvent('sanjivni:game-completed'));
   };
 
   const matchedPairsCount = cards.filter((c) => c.isMatched).length / 2;
@@ -238,15 +269,15 @@ export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack
         </div>
       </div>
 
-      {/* Dynamic Cultural Card Grid (6 cards total: 3 pairs) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4 max-w-2xl mx-auto">
+      {/* Accessible Dynamic Cultural Card Grid (2 cols on mobile, 3 on tablet, 4 on desktop) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 max-w-5xl mx-auto">
         {cards.map((card) => {
           return (
             <button
               key={card.uid}
               onClick={() => handleCardClick(card)}
               disabled={card.isMatched || card.isFlipped}
-              className={`relative min-h-[160px] sm:min-h-[190px] rounded-2xl border-3 transition-all transform duration-300 flex flex-col items-center justify-between p-2 focus:outline-none select-none cursor-pointer ${
+              className={`relative aspect-[4/5] min-h-[150px] md:min-h-[190px] rounded-2xl sm:rounded-3xl border-3 transition-all transform duration-300 flex flex-col items-center justify-between p-2.5 sm:p-3 focus:outline-none select-none cursor-pointer ${
                 card.isMatched
                   ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 scale-95 opacity-90 shadow-none'
                   : card.isFlipped
@@ -257,12 +288,12 @@ export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack
             >
               {card.isFlipped || card.isMatched ? (
                 <div className="w-full h-full flex flex-col items-center justify-between gap-1.5">
-                  {/* Strict Aspect-Square Photographic Container */}
-                  <div className="w-full aspect-square rounded-xl overflow-hidden border border-stone-200 dark:border-stone-700 shadow-xs relative bg-stone-100 dark:bg-stone-800">
+                  {/* High-Contrast Photographic Container (Occupies 85-90% area) */}
+                  <div className="relative w-full flex-1 rounded-xl overflow-hidden border-2 border-emerald-500/50 shadow-md bg-stone-100 dark:bg-stone-800">
                     <img
                       src={card.imageUrl}
                       alt={card.name}
-                      className="object-cover w-full h-full rounded-xl"
+                      className="w-full h-full object-cover rounded-xl shadow-md transition-transform duration-200 hover:scale-105 active:scale-95"
                       loading="lazy"
                       onError={(e) => {
                         console.warn('Image failed to load, falling back to default:', e.currentTarget.src);
@@ -271,29 +302,29 @@ export const PictureMatchingGame: React.FC<PictureMatchingGameProps> = ({ onBack
                       }}
                     />
                     {card.isMatched && (
-                      <div className="absolute top-1 right-1 bg-emerald-600 text-white rounded-full p-0.5 shadow-sm">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      <div className="absolute top-1.5 right-1.5 bg-emerald-600 text-white rounded-full p-1 shadow-sm">
+                        <CheckCircle2 className="w-4 h-4" />
                       </div>
                     )}
                   </div>
 
-                  {/* Clean Photographic Label */}
-                  <div className="w-full text-center px-1 pb-0.5">
-                    <p className="text-xs sm:text-sm font-black text-stone-900 dark:text-stone-100 truncate leading-tight">
+                  {/* Bold Legible Text Label */}
+                  <div className="w-full text-center px-1 pt-1">
+                    <p className="text-base sm:text-lg font-semibold text-stone-900 dark:text-stone-100 truncate leading-tight">
                       {card.name}
                     </p>
-                    <p className="text-[10px] font-bold text-stone-500 dark:text-stone-400 truncate capitalize">
+                    <p className="text-xs sm:text-sm font-bold text-stone-500 dark:text-stone-400 truncate capitalize">
                       {safeRegion.replace('-', ' ')}
                     </p>
                   </div>
                 </div>
               ) : (
                 /* Card Back (Patterned Duolingo-style Chunky Back) */
-                <div className="w-full h-full flex flex-col items-center justify-center text-center">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-800/80 border-2 border-emerald-600 flex items-center justify-center text-emerald-200 mb-1">
-                    <Sparkles className="w-5 h-5" />
+                <div className="w-full h-full flex flex-col items-center justify-center text-center p-3">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-emerald-800/80 border-2 border-emerald-600 flex items-center justify-center text-emerald-200 shadow-inner mb-2">
+                    <Sparkles className="w-8 h-8 sm:w-9 sm:h-9" />
                   </div>
-                  <span className="text-[11px] font-black text-emerald-100 tracking-wider uppercase">
+                  <span className="text-sm sm:text-base font-black text-emerald-100 tracking-wider uppercase">
                     SANJIVNI
                   </span>
                 </div>

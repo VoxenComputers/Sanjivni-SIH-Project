@@ -16,7 +16,7 @@ import {
   Volume2,
   VolumeX
 } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
+import { useApp, DEFAULT_PATIENT_ID } from '../../context/AppContext';
 import { soundFx } from '../../utils/audio';
 import { SpeechButton } from '../common/SpeechButton';
 import { sendPatientAiChat, PatientAiResponse } from '../../services/patientAiService';
@@ -227,7 +227,7 @@ export const PatientAssistantModal: React.FC = () => {
     setIsTyping(true);
 
     try {
-      const targetId = activePatientId || '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+      const targetId = activePatientId || DEFAULT_PATIENT_ID;
       const response: PatientAiResponse = await sendPatientAiChat(
         text,
         targetId,

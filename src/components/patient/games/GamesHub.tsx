@@ -11,7 +11,7 @@ import { soundFx } from '../../../utils/audio';
 import { BrainCircuit, Flame, Trophy, Play, Layers, Eye, Sparkles, HelpCircle } from 'lucide-react';
 
 export const GamesHub: React.FC = () => {
-  const { streak, totalStars, mmseScore, gameHistory, t, selectedRegion } = useApp();
+  const { streak, totalStars, mmseScore, gameHistory, t, selectedRegion, language } = useApp();
   const [activeGame, setActiveGame] = useState<'none' | 'memory-match' | 'match-order' | 'guess-picture' | 'spaced-retrieval'>('none');
 
   // Page Visibility API: Stop audio and terminate active game state immediately on tab switch
@@ -198,7 +198,7 @@ export const GamesHub: React.FC = () => {
           </button>
         </div>
 
-        {/* Game 4: Spaced Retrieval Trivia */}
+        {/* Game 4: Family Trivia (Renamed & Localized) */}
         <div className="duo-card p-5 flex flex-col justify-between hover:border-rose-500 transition-all border-3 border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800">
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
@@ -206,22 +206,22 @@ export const GamesHub: React.FC = () => {
                 <HelpCircle className="w-6 h-6" />
               </div>
               <SpeechButton 
-                text="Spaced Retrieval Trivia. Practice personalized memory questions." 
+                text={`${language === 'hi' ? 'पारिवारिक प्रश्नोत्तरी (Family Trivia)' : (t('familyTriviaTitle') || 'Family Trivia')}. ${language === 'hi' ? 'अपने प्रियजनों और पुरानी यादों को पहचानें' : (t('familyTriviaDesc') || 'Remember your loved ones and cherished memories')}.`} 
                 size="sm" 
               />
             </div>
 
             <div className="mb-2">
               <span className="bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 font-black text-xs px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-rose-300 dark:border-rose-700">
-                Long-Term Retrieval
+                {language === 'hi' ? 'पारिवारिक यादें' : 'Family Memories'}
               </span>
             </div>
 
             <h3 className="text-xl sm:text-2xl font-black text-stone-900 dark:text-white tracking-tight mb-2">
-              Spaced Retrieval Trivia
+              {language === 'hi' ? 'पारिवारिक प्रश्नोत्तरी (Family Trivia)' : (t('familyTriviaTitle') || 'Family Trivia')}
             </h3>
             <p className="text-sm font-bold text-stone-600 dark:text-stone-300 mb-5 leading-relaxed">
-              Answer personalized family and cultural questions at optimal intervals to strengthen memory pathways.
+              {language === 'hi' ? 'अपने प्रियजनों और पुरानी यादों को पहचानें' : (t('familyTriviaDesc') || 'Remember your loved ones and cherished memories')}
             </p>
           </div>
 
