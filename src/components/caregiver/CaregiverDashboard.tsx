@@ -52,7 +52,16 @@ export const CaregiverDashboard: React.FC = () => {
 
   const handleDeleteTask = async (taskId: string, titleStr: string) => {
     if (window.confirm(`Delete routine reminder "${titleStr}"? This will remove it from Koka's daily schedule.`)) {
-      await deleteTask(taskId);
+      try {
+        await deleteTask(taskId);
+      } catch (err: any) {
+        console.error('[CaregiverDashboard] Delete task error:', {
+          message: err?.message,
+          details: err?.details,
+          hint: err?.hint,
+          code: err?.code,
+        });
+      }
     }
   };
 

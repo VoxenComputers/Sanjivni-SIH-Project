@@ -8,16 +8,27 @@ import { supabase } from '../lib/supabase';
 import {
   fetchUserProfile,
   isValidUuid,
+  resolveToValidUuid,
+  toNullableUuid,
+  DEFAULT_DEMO_PATIENT_UUID,
   fetchFamilyMembers,
   fetchPatientTasks,
   seedDefaultPatientTasks,
   addPatientTask,
+  createTask,
+  addCaregiverMember,
+  addPatient,
+  linkPatientToCaregiver,
+  fetchCaregiverPatients,
+  fetchCaregiverTeam,
+  addFamilyMemberDb,
   deletePatientTask,
   toggleTaskCompletion as toggleTaskCompletionDb,
   calculateDynamicMmse,
   fetchPatientTelemetry,
   savePatientTelemetry,
   recordGameSessionInDb,
+  PatientProfileRecord,
 } from '../lib/supabaseDb';
 import {
   LocationData,
@@ -167,19 +178,33 @@ interface AppContextType {
     doctorName: string;
     clinic: string;
   };
+  currentPatient: {
+    id: string;
+    name: string;
+    honorific: string;
+    age: number;
+    location: string;
+    diagnosis: string;
+    bloodGroup: string;
+    emergencyContact: string;
+    doctorName: string;
+    clinic: string;
+  };
+  activeCaregiver: {
+    id: string;
+    name: string;
+    role: 'caregiver';
+  };
   familyMembers: FamilyMember[];
   tasks: RoutineTask[];
-  addTask: (task: Partial<RoutineTask> & {
-    title: string;
-    time?: string;
-    type?: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game';
-    description?: string;
-    notes?: string;
-    timeOfDay?: 'morning' | 'afternoon' | 'evening';
-    period?: 'morning' | 'afternoon' | 'evening';
-    titleKey?: string;
-    descKey?: string;
-  }) => void;
+  addTask: (task: any) => Promise<void> | void;
+  addMember: (member: any) => Promise<void>;
+  createTask: (taskData: any) => Promise<RoutineTask>;
+  addCaregiverMember: (memberData: any) => Promise<FamilyMember>;
+  addPatient: (patientData: any) => Promise<PatientProfileRecord>;
+  linkPatientToCaregiver: (caregiverId: string, patientId: string) => Promise<{ success: boolean; error?: string }>;
+  fetchCaregiverPatients: (caregiverId: string) => Promise<PatientProfileRecord[]>;
+  fetchCaregiverTeam: (caregiverId: string) => Promise<any[]>;
   deleteTask: (id: string) => Promise<void>;
   restoreDefaultTasks: () => Promise<void>;
   toggleTaskCompletion: (id: string) => void;
@@ -253,69 +278,59 @@ const INITIAL_FAMILY: FamilyMember[] = [
 const INITIAL_TASKS: RoutineTask[] = [
   {
     id: 'task-1',
-    time: '8:00 AM',
-    timeStr: '8:00 AM',
+    time: '08:30 AM',
+    timeStr: '08:30 AM',
+    time_slot: '08:30 AM',
     timeOfDay: 'morning',
-    title: 'Take Morning Blood Pressure Medicine',
-    description: '1 tablet with a warm glass of water after breakfast',
-    titleKey: 'taskBloodPressureTitle',
-    descKey: 'taskBloodPressureDesc',
+    period: 'morning',
+    title: 'Morning Medication & Glass of Water',
+    description: 'Take prescribed morning medicines with a full glass of fresh water.',
+    notes: 'Take prescribed morning medicines with a full glass of fresh water.',
     type: 'medicine',
     category: 'medication',
-    isCompleted: true,
-    completed: true,
-  },
-  {
-    id: 'task-2',
-    time: '8:30 AM',
-    timeStr: '8:30 AM',
-    timeOfDay: 'morning',
-    title: 'Drink Warm Water & Lemon',
-    description: 'Staying well hydrated keeps your memory active',
-    titleKey: 'taskHydrationTitle',
-    descKey: 'taskHydrationDesc',
-    type: 'hydration',
-    category: 'hydration',
-    isCompleted: true,
-    completed: true,
-  },
-  {
-    id: 'task-3',
-    time: '10:30 AM',
-    timeStr: '10:30 AM',
-    timeOfDay: 'morning',
-    title: 'Morning Walk in Garden',
-    description: 'Take a peaceful 15-minute stroll around the flowers',
-    titleKey: 'taskMorningWalkTitle',
-    descKey: 'taskMorningWalkDesc',
-    type: 'exercise',
-    category: 'exercise',
     isCompleted: false,
     completed: false,
   },
   {
-    id: 'task-4',
-    time: '3:30 PM',
-    timeStr: '3:30 PM',
-    timeOfDay: 'afternoon',
-    title: 'Play Cultural Memory Game with Rongmon',
-    description: 'Match North-East cards to exercise your mind',
-    titleKey: 'taskGameTitle',
-    descKey: 'taskGameDesc',
+    id: 'task-2',
+    time: '11:00 AM',
+    timeStr: '11:00 AM',
+    time_slot: '11:00 AM',
+    timeOfDay: 'morning',
+    period: 'morning',
+    title: 'Gentle Cognitive Exercise / Memory Game',
+    description: 'Play North-East cultural memory cards with Rongmon to stimulate recall.',
+    notes: 'Play North-East cultural memory cards with Rongmon to stimulate recall.',
     type: 'activity',
     category: 'game',
     isCompleted: false,
     completed: false,
   },
   {
-    id: 'task-5',
-    time: '8:00 PM',
-    timeStr: '8:00 PM',
+    id: 'task-3',
+    time: '01:30 PM',
+    timeStr: '01:30 PM',
+    time_slot: '01:30 PM',
+    timeOfDay: 'afternoon',
+    period: 'afternoon',
+    title: 'Afternoon Rest & Hydration',
+    description: 'Rest peacefully and drink a glass of lukewarm water or herbal tea.',
+    notes: 'Rest peacefully and drink a glass of lukewarm water or herbal tea.',
+    type: 'hydration',
+    category: 'hydration',
+    isCompleted: false,
+    completed: false,
+  },
+  {
+    id: 'task-4',
+    time: '08:00 PM',
+    timeStr: '08:00 PM',
+    time_slot: '08:00 PM',
     timeOfDay: 'evening',
-    title: 'Take Evening Multivitamin Tablet',
-    description: '1 capsule with dinner as prescribed by Dr. Priya',
-    titleKey: 'taskEveningMedTitle',
-    descKey: 'taskEveningMedDesc',
+    period: 'evening',
+    title: 'Evening Medication',
+    description: 'Take evening multivitamin and prescribed night dose after dinner.',
+    notes: 'Take evening multivitamin and prescribed night dose after dinner.',
     type: 'medicine',
     category: 'medication',
     isCompleted: false,
@@ -705,15 +720,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [customFamilyMembers, localizedFamily, isOfflineDemoSandbox, DEMO_FAMILY_IDS]);
 
   const [tasks, setTasks] = useState<RoutineTask[]>(() => {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('smriti_tasks') : null;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+    if (typeof window !== 'undefined') {
+      const savedVersion = localStorage.getItem('smriti_tasks_version');
+      if (savedVersion === '2.0') {
+        const saved = localStorage.getItem('smriti_tasks');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed;
+            }
+          } catch {
+            // ignore
+          }
         }
-      } catch {
-        // ignore
+      } else {
+        localStorage.setItem('smriti_tasks_version', '2.0');
+        localStorage.setItem('smriti_tasks', JSON.stringify(INITIAL_TASKS));
       }
     }
     return INITIAL_TASKS;
@@ -1220,15 +1243,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleTaskCompletion = (id: string) => {
     soundFx.playClickSound();
+    let nextState = false;
+    let previousStatus = false;
+
+    // 1. Instant optimistic local state update
     setTasks(prev => {
-      let nextState = false;
+      const target = prev.find(t => t.id === id);
+      if (target) {
+        previousStatus = !!(target.isCompleted ?? target.completed);
+        nextState = !previousStatus;
+        if (nextState) {
+          soundFx.playSuccessChime();
+        }
+      }
       const updated = prev.map(t => {
         if (t.id === id) {
-          const currentStatus = t.isCompleted ?? t.completed;
-          nextState = !currentStatus;
-          if (nextState) {
-            soundFx.playSuccessChime();
-          }
           return {
             ...t,
             isCompleted: nextState,
@@ -1246,26 +1275,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const newMmse = calculateDynamicMmse(updated, 90);
       setMmseScore(newMmse);
 
-      // Persist task state & updated telemetry to Supabase
-      const targetId = activePatientId || (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) || '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
-      if (targetId && isValidUuid(targetId)) {
-        toggleTaskCompletionDb(id, nextState).catch(err => {
-          console.warn('[AppContext] toggleTaskCompletionDb sync notice:', err);
-        });
-        savePatientTelemetry(targetId, {
-          streak,
-          totalStars,
-          mmseScore: newMmse,
-        }).catch(err => {
-          console.warn('[AppContext] savePatientTelemetry sync notice:', err);
-        });
-      }
-
       return updated;
     });
 
+    // 2. Persist to Supabase asynchronously with rollback on failure
+    const targetId = activePatientId || (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null);
+    if (isValidUuid(id)) {
+      toggleTaskCompletionDb(id, nextState).then(success => {
+        if (!success) {
+          console.error('[AppContext] Failed to update task status in Supabase, reverting local state:', id);
+          setTasks(prev => {
+            const reverted = prev.map(t => t.id === id ? { ...t, isCompleted: previousStatus, completed: previousStatus } : t);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('smriti_tasks', JSON.stringify(reverted));
+            }
+            return reverted;
+          });
+        }
+      }).catch(err => {
+        console.error('[AppContext] Error updating task status in Supabase:', err);
+        setTasks(prev => {
+          const reverted = prev.map(t => t.id === id ? { ...t, isCompleted: previousStatus, completed: previousStatus } : t);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('smriti_tasks', JSON.stringify(reverted));
+          }
+          return reverted;
+        });
+      });
+    }
+
+    if (targetId && isValidUuid(targetId)) {
+      savePatientTelemetry(targetId, {
+        streak,
+        totalStars,
+        mmseScore: calculateDynamicMmse(tasks, 90),
+      }).catch(err => {
+        console.warn('[AppContext] savePatientTelemetry sync notice:', err);
+      });
+    }
+
+    // 3. Dispatch broadcast event with source 'toggle' to prevent race-condition re-fetch
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated'));
+      window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated', {
+        detail: { source: 'toggle', taskId: id, nextState }
+      }));
     }
   };
 
@@ -1301,30 +1354,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const restoreDefaultTasks = async () => {
     soundFx.playSuccessChime();
-    const targetId = activePatientId || (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) || '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+    const targetId = resolveToValidUuid(activePatientId);
     let seededTasks: RoutineTask[] = INITIAL_TASKS;
-    if (targetId && isValidUuid(targetId)) {
-      seededTasks = await seedDefaultPatientTasks(targetId);
+    if (targetId) {
+      seededTasks = await seedDefaultPatientTasks(targetId, true);
     }
     setTasks(seededTasks);
     if (typeof window !== 'undefined') {
+      localStorage.setItem('smriti_tasks_version', '2.0');
       localStorage.setItem('smriti_tasks', JSON.stringify(seededTasks));
-      window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated'));
+      window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated', { detail: { source: 'restore' } }));
     }
   };
 
-  const addTask = (newTask: Partial<RoutineTask> & {
-    title: string;
-    time?: string;
-    type?: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game';
-    description?: string;
-    notes?: string;
-    timeOfDay?: 'morning' | 'afternoon' | 'evening';
-    period?: 'morning' | 'afternoon' | 'evening';
-    titleKey?: string;
-    descKey?: string;
-  }) => {
-    soundFx.playSuccessChime();
+  const currentPatient = useMemo(() => ({
+    ...patient,
+    id: resolveToValidUuid(activePatientId),
+  }), [patient, activePatientId]);
+
+  const activeCaregiver = useMemo(() => ({
+    id: (typeof window !== 'undefined' && isValidUuid(localStorage.getItem('smriti_caregiver_id'))
+      ? localStorage.getItem('smriti_caregiver_id')!
+      : '9e3ba6c7-fb34-4927-b07b-01bf059acaf1'),
+    name: 'Dr. Priya Baruah',
+    role: 'caregiver' as const,
+  }), []);
+
+  const addMember = async (newMemberData: any): Promise<void> => {
+    soundFx.playClickSound();
+    const resolvedPatientId = resolveToValidUuid(newMemberData.patient_id || newMemberData.patientId || activePatientId);
+
+    try {
+      const created = await addFamilyMemberDb(resolvedPatientId, newMemberData);
+      updateCustomFamilyMembers([...familyMembers, created]);
+      soundFx.playSuccessChime();
+    } catch (err: any) {
+      console.error('[AppContext] addMember error:', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code,
+      });
+      throw err;
+    }
+  };
+
+  const addTask = async (newTask: any): Promise<void> => {
+    soundFx.playClickSound();
     const type = newTask.type || 'activity';
     const category: 'medication' | 'hydration' | 'exercise' | 'food' | 'game' =
       type === 'medicine' ? 'medication' : (type as any);
@@ -1345,9 +1421,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const finalTime = newTask.time || newTask.timeStr || newTask.time_slot || '09:00 AM';
+    const tempId = isValidUuid(newTask.id) ? newTask.id : crypto.randomUUID();
 
     const task: RoutineTask = {
-      id: newTask.id || `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: tempId,
       title: newTask.title,
       time: finalTime,
       timeStr: newTask.timeStr || finalTime,
@@ -1364,6 +1441,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       descKey: newTask.descKey,
     };
 
+    // Optimistic UI update
     setTasks(prev => {
       const filtered = prev.filter(t => t.id !== task.id);
       const updated = [...filtered, task];
@@ -1373,21 +1451,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    // Live Supabase insert if activePatientId is available and not already persisted in DB
-    const isAlreadyPersisted = !!(newTask.id && isValidUuid(newTask.id));
-    if (!isAlreadyPersisted && activePatientId && isValidUuid(activePatientId)) {
-      addPatientTask({
-        patientId: activePatientId,
+    const targetPatientId = resolveToValidUuid(newTask.patientId || newTask.patient_id || activePatientId);
+
+    try {
+      const created = await createTask({
+        id: tempId,
+        patient_id: targetPatientId,
         title: newTask.title,
-        timeSlot: finalTime,
         time_slot: finalTime,
         period: timeOfDay,
         notes: task.notes,
         description: task.description,
         type: type,
         category: category,
-      }).catch(err => {
-        console.warn('[AppContext] addPatientTask live sync notice:', err);
+        icon: newTask.icon || 'default',
+        priority: newTask.priority || 'normal',
+      });
+
+      if (created && created.id !== tempId) {
+        setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: created.id } : t));
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated', { detail: created || task }));
+      }
+      soundFx.playSuccessChime();
+    } catch (err: any) {
+      console.error('[AppContext] addTask database error:', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code,
       });
     }
   };
@@ -1569,9 +1663,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         patientTab,
         setPatientTab,
         patient,
+        currentPatient,
+        activeCaregiver,
         familyMembers,
         tasks,
         addTask,
+        addMember,
+        createTask,
+        addCaregiverMember,
+        addPatient,
+        linkPatientToCaregiver,
+        fetchCaregiverPatients,
+        fetchCaregiverTeam,
         deleteTask,
         restoreDefaultTasks,
         toggleTaskCompletion,

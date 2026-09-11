@@ -387,23 +387,23 @@ export const sendPatientAiChat = async (
     let response;
     try {
       response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents,
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.3,
-          maxOutputTokens: 250, // enforce conciseness
+          temperature: 0.6,
+          maxOutputTokens: 400,
         },
       });
     } catch (modelErr: any) {
-      console.warn('[Patient AI] gemini-2.5-flash fallback:', modelErr?.message);
+      console.warn('[Patient AI] gemini-3.6-flash fallback to gemini-3.5-flash:', modelErr?.message);
       response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents,
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.3,
-          maxOutputTokens: 250,
+          temperature: 0.6,
+          maxOutputTokens: 400,
         },
       });
     }
@@ -412,6 +412,8 @@ export const sendPatientAiChat = async (
     if (!responseText) {
       throw new Error('Empty response from Gemini API');
     }
+
+    console.log('[Patient AI] Live Gemini generative response generated successfully');
 
     // Post-generation check: verify model didn't suggest emergency/dosage
     const postCheck = checkEmergencyIntent(responseText);

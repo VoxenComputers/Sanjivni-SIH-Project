@@ -26,6 +26,7 @@ interface ChatMessage {
   timestamp: string;
   isEmergency?: boolean;
   suggestedAction?: 'sos' | 'call_caregiver' | 'view_routine' | 'view_family';
+  isLiveGemini?: boolean;
 }
 
 export const PatientAssistantModal: React.FC = () => {
@@ -219,6 +220,7 @@ export const PatientAssistantModal: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isEmergency: response.isEmergency,
         suggestedAction: response.suggestedAction,
+        isLiveGemini: response.isLiveGemini,
       };
 
       setMessages((prev) => [...prev, botMsg]);
@@ -306,6 +308,10 @@ export const PatientAssistantModal: React.FC = () => {
                     <span>Sanjivni Saathi</span>
                     <span className="bg-emerald-700 text-emerald-100 text-xs font-black px-2.5 py-0.5 rounded-full border border-emerald-400">
                       Your Companion
+                    </span>
+                    <span className="bg-emerald-900/90 text-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-400/60 flex items-center gap-1 shadow-xs">
+                      <Sparkles className="w-3 h-3 text-amber-300" />
+                      Gemini 3.6 Flash
                     </span>
                   </h3>
                   <p className="text-xs sm:text-sm text-emerald-200 font-bold mt-0.5 flex items-center gap-1.5">
@@ -433,9 +439,17 @@ export const PatientAssistantModal: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <span className="text-[11px] font-bold text-stone-400 mt-1 px-3">
-                    {msg.timestamp}
-                  </span>
+                  <div className="flex items-center gap-2 mt-1 px-3">
+                    <span className="text-[11px] font-bold text-stone-400">
+                      {msg.timestamp}
+                    </span>
+                    {msg.sender === 'bot' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/70 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+                        <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                        <span>Gemini 3.6 Flash</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
 

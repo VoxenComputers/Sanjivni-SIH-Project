@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp, FamilyMember } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { soundFx } from '../../utils/audio';
-import { uploadMediaFile, addFamilyMemberDb } from '../../lib/supabaseDb';
+import { uploadMediaFile, addFamilyMemberDb, resolveToValidUuid } from '../../lib/supabaseDb';
 import {
   Heart,
   User,
@@ -80,13 +80,9 @@ export const AddFamilyMemberModal: React.FC<AddFamilyMemberModalProps> = ({
     setErrorMessage('');
     setSuccessMessage('');
 
-    const resolvedPatientId =
-      customPatientId ||
-      activePatientId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) ||
-      authUser?.id ||
-      appUser?.id ||
-      'demo-patient-koka';
+    const resolvedPatientId = resolveToValidUuid(
+      customPatientId || activePatientId || authUser?.id || appUser?.id
+    );
 
     let createdMember: FamilyMember;
 
@@ -104,7 +100,12 @@ export const AddFamilyMemberModal: React.FC<AddFamilyMemberModalProps> = ({
         avatarUrl: avatarUrl || undefined,
       });
     } catch (err: any) {
-      console.error('Actual DB Insert Error:', err);
+      console.error('Actual DB Insert Error:', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code,
+      });
       // ONLY display error toast if error is genuinely truthy
       setErrorMessage(err?.message || 'Failed to add family member to database. Please check your connection.');
       setIsSubmitting(false);

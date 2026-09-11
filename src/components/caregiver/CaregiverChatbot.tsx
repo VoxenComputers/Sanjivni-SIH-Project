@@ -341,7 +341,7 @@ export const CaregiverChatbot: React.FC = () => {
                     <span>Sanjivni AI Companion</span>
                     <span className="bg-emerald-600/90 text-emerald-100 text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-400/80 flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-yellow-300" />
-                      Gemini 2.5
+                      Gemini 3.6 Flash
                     </span>
                   </h3>
                   <p className="text-xs text-emerald-200 font-bold flex items-center gap-1.5 mt-0.5">
@@ -508,9 +508,15 @@ export const CaregiverChatbot: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] font-black text-stone-400 dark:text-stone-500">
-                            {msg.timestamp}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/70 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800">
+                              <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                              Gemini 3.6 Flash
+                            </span>
+                            <span className="text-[10px] font-black text-stone-400 dark:text-stone-500">
+                              {msg.timestamp}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     )}

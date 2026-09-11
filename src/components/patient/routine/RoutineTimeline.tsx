@@ -111,7 +111,20 @@ export const RoutineTimeline: React.FC = () => {
         },
         (payload) => {
           console.log('[RoutineTimeline] Realtime task change detected (patient_tasks):', payload.eventType);
-          loadLiveTasks();
+          if (payload.eventType === 'UPDATE' && payload.new && (payload.new as any).id) {
+            const updated = payload.new as any;
+            setDbTasks((prev) =>
+              prev
+                ? prev.map((t) =>
+                    t.id === updated.id
+                      ? { ...t, completed: !!updated.completed, isCompleted: !!updated.completed }
+                      : t
+                  )
+                : prev
+            );
+          } else {
+            loadLiveTasks();
+          }
         }
       )
       .on(
@@ -124,7 +137,20 @@ export const RoutineTimeline: React.FC = () => {
         },
         (payload) => {
           console.log('[RoutineTimeline] Realtime task change detected (routine_tasks):', payload.eventType);
-          loadLiveTasks();
+          if (payload.eventType === 'UPDATE' && payload.new && (payload.new as any).id) {
+            const updated = payload.new as any;
+            setDbTasks((prev) =>
+              prev
+                ? prev.map((t) =>
+                    t.id === updated.id
+                      ? { ...t, completed: !!(updated.is_completed ?? updated.completed), isCompleted: !!(updated.is_completed ?? updated.completed) }
+                      : t
+                  )
+                : prev
+            );
+          } else {
+            loadLiveTasks();
+          }
         }
       )
       .subscribe();
@@ -136,19 +162,24 @@ export const RoutineTimeline: React.FC = () => {
 
   // 3. Instant In-App & Multi-Tab Synchronization Listeners
   useEffect(() => {
-    const handleImmediateRefresh = () => {
+    const handleImmediateRefresh = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      // Skip refetch if the event originated from an optimistic task toggle
+      if (customEvent?.detail?.source === 'toggle') {
+        return;
+      }
       console.log('[RoutineTimeline] Instant refresh triggered via task update event');
       loadLiveTasks();
     };
 
-    window.addEventListener('sanjivni:tasks-updated', handleImmediateRefresh);
-    window.addEventListener('storage', handleImmediateRefresh);
-    window.addEventListener('focus', handleImmediateRefresh);
+    window.addEventListener('sanjivni:tasks-updated', handleImmediateRefresh as EventListener);
+    window.addEventListener('storage', handleImmediateRefresh as EventListener);
+    window.addEventListener('focus', handleImmediateRefresh as EventListener);
 
     return () => {
-      window.removeEventListener('sanjivni:tasks-updated', handleImmediateRefresh);
-      window.removeEventListener('storage', handleImmediateRefresh);
-      window.removeEventListener('focus', handleImmediateRefresh);
+      window.removeEventListener('sanjivni:tasks-updated', handleImmediateRefresh as EventListener);
+      window.removeEventListener('storage', handleImmediateRefresh as EventListener);
+      window.removeEventListener('focus', handleImmediateRefresh as EventListener);
     };
   }, [loadLiveTasks]);
 
@@ -160,24 +191,25 @@ export const RoutineTimeline: React.FC = () => {
     return contextTasks;
   }, [dbTasks, contextTasks]);
 
-  // Handle task completion toggle with optimistic UI and live DB sync
+  // Handle task completion toggle with instant optimistic UI and live DB sync
   const handleToggleTask = async (taskId: string) => {
-    // If working with dbTasks, perform optimistic update
+    // Determine the current completion status
+    const currentTask = (dbTasks || contextTasks).find((t) => t.id === taskId);
+    const currentStatus = !!(currentTask?.completed ?? currentTask?.isCompleted);
+    const nextState = !currentStatus;
+
+    // 1. Instant optimistic local update on dbTasks if present
     if (dbTasks && dbTasks.length > 0) {
-      const target = dbTasks.find((t) => t.id === taskId);
-      if (target) {
-        const nextState = !(target.completed ?? target.isCompleted);
-        setDbTasks((prev) =>
-          prev
-            ? prev.map((t) =>
-                t.id === taskId ? { ...t, completed: nextState, isCompleted: nextState } : t
-              )
-            : prev
-        );
-      }
+      setDbTasks((prev) =>
+        prev
+          ? prev.map((t) =>
+              t.id === taskId ? { ...t, completed: nextState, isCompleted: nextState } : t
+            )
+          : prev
+      );
     }
 
-    // Always update global context state (which updates Supabase & dynamic MMSE & telemetry)
+    // 2. Update global context state (which updates context tasks, localStorage, MMSE, and Supabase)
     toggleTask(taskId);
   };
 

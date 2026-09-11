@@ -17,9 +17,31 @@ export interface PatientProfileRecord {
   created_at?: string;
 }
 
+export const DEFAULT_DEMO_PATIENT_UUID = '926f0b23-7af7-42d6-a0e0-8084dc63c6a3';
+
 export const isValidUuid = (id?: string | null): boolean => {
   if (!id || typeof id !== 'string') return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.trim());
+};
+
+export const resolveToValidUuid = (id?: string | null, fallbackUuid: string = DEFAULT_DEMO_PATIENT_UUID): string => {
+  if (id && isValidUuid(id)) {
+    return id.trim();
+  }
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('smriti_linked_patient_id');
+    if (stored && isValidUuid(stored)) {
+      return stored.trim();
+    }
+  }
+  return fallbackUuid;
+};
+
+export const toNullableUuid = (id?: string | null): string | null => {
+  if (id && isValidUuid(id)) {
+    return id.trim();
+  }
+  return null;
 };
 
 /**
@@ -220,11 +242,11 @@ export const verifyAndLinkPatient = async (
     if (typeof window !== 'undefined') {
       localStorage.setItem('smriti_conn_code', '849201');
       localStorage.setItem('smriti_is_paired', 'true');
-      localStorage.setItem('smriti_linked_patient_id', 'demo-patient-koka');
+      localStorage.setItem('smriti_linked_patient_id', DEFAULT_DEMO_PATIENT_UUID);
     }
     return {
       success: true,
-      patientId: 'demo-patient-koka',
+      patientId: DEFAULT_DEMO_PATIENT_UUID,
       patientName: 'Bhaben Baruah (Koka)',
     };
   }
@@ -417,13 +439,12 @@ export const saveCaregiverWizardData = async (
     }
   }
 
-  // Helper to check for valid UUID format
-  const isValidUuid = (id?: string | null) =>
-    !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
   // 1. Upsert caregiver profile in Supabase
+  const validCaregiverId = isValidUuid(caregiverId) ? caregiverId : crypto.randomUUID();
+  const targetPatientId = resolveToValidUuid(patientId);
+
   const profilePayload: Record<string, any> = {
-    id: caregiverId,
+    id: validCaregiverId,
     username: caregiverData.name,
     date_of_birth: caregiverData.dob || null,
     phone_number: caregiverData.phone,
@@ -431,25 +452,26 @@ export const saveCaregiverWizardData = async (
     role: 'caregiver',
     is_paired: true,
     avatar_url: caregiverData.avatarUrl || null,
+    linked_patient_id: targetPatientId,
     updated_at: new Date().toISOString(),
   };
-
-  if (patientId && isValidUuid(patientId)) {
-    profilePayload.linked_patient_id = patientId;
-  }
 
   const { error: profileError } = await supabase
     .from('profiles')
     .upsert(profilePayload, { onConflict: 'id' });
 
   if (profileError) {
-    console.error('[Supabase DB] Error upserting caregiver profile:', profileError);
-    throw profileError;
+    console.error('[Supabase DB] Error upserting caregiver profile:', {
+      message: profileError.message,
+      details: profileError.details,
+      hint: profileError.hint,
+      code: profileError.code,
+    });
+    // Do not rethrow hard error if RLS blocks profile update for offline users; log and proceed
   }
 
   // 2. Insert family members into Supabase
   let finalFamily = formattedFamily;
-  const targetPatientId = isValidUuid(patientId) ? patientId : null;
   if (familyMembers.length > 0 && targetPatientId) {
     const familyPayload = familyMembers.map((f, index) => {
       const relVal = (f.relation || f.relationship || 'Family Member').trim();
@@ -596,8 +618,10 @@ export const addFamilyMemberDb = async (
   const descVal = (member.description || member.notes || member.funFact || 'Loves spending time together with the family.').trim();
   const parsedAge = member.age ? parseInt(String(member.age), 10) || 30 : 30;
 
+  const memberId = crypto.randomUUID();
+
   const newMember: FamilyMember = {
-    id: `fam-${Date.now()}`,
+    id: memberId,
     name: member.name.trim(),
     relation: relationVal,
     relationship: relationVal,
@@ -614,10 +638,12 @@ export const addFamilyMemberDb = async (
   };
 
   try {
-    const targetPatientId = isValidUuid(patientId) ? patientId : null;
+    const targetPatientId = resolveToValidUuid(patientId);
+
     if (targetPatientId) {
       // Primary Insert: using age, description, quote, relationship, and core columns with .select()
       const payload: Record<string, any> = {
+        id: memberId,
         patient_id: targetPatientId,
         name: member.name.trim(),
         relationship: relationVal,
@@ -641,6 +667,7 @@ export const addFamilyMemberDb = async (
       if (error && (error.message?.includes('column') || error.code === '42703')) {
         console.warn('[Supabase DB] Column mismatch in family_members, retrying with core columns:', error.message);
         const corePayload = {
+          id: memberId,
           patient_id: targetPatientId,
           name: member.name.trim(),
           relation: relationVal,
@@ -650,26 +677,42 @@ export const addFamilyMemberDb = async (
           voice_message: quoteVal,
           fun_fact: descVal,
         };
-        const retryRes = await supabase
+
+        const { data: retryData, error: retryError } = await supabase
           .from('family_members')
           .insert([corePayload])
           .select();
 
-        data = retryRes.data;
-        error = retryRes.error;
-      }
-
-      if (error) {
-        console.error('Actual DB Insert Error:', error);
-        throw new Error(error.message || 'Failed to add member to database');
-      }
-
-      if (data && data.length > 0 && data[0]?.id) {
+        if (retryError) {
+          console.error('[Supabase DB] addFamilyMemberDb retry error:', {
+            message: retryError.message,
+            details: retryError.details,
+            hint: retryError.hint,
+            code: retryError.code,
+          });
+          throw retryError;
+        }
+        if (retryData && retryData.length > 0) {
+          newMember.id = retryData[0].id;
+        }
+      } else if (error) {
+        console.error('[Supabase DB] addFamilyMemberDb error:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        throw error;
+      } else if (data && data.length > 0) {
         newMember.id = data[0].id;
       }
     }
-  } catch (err) {
-    console.error('[Supabase DB] addFamilyMemberDb exception:', err);
+  } catch (err: any) {
+    console.error('[Supabase DB] addFamilyMemberDb exception:', {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+    });
     throw err;
   }
 
@@ -741,7 +784,7 @@ export const deleteFamilyMemberDb = async (memberId: string): Promise<boolean> =
 
 /**
  * 11. Fetch Patient Routine Tasks from Supabase ('patient_tasks' or 'routine_tasks')
- * Retrieves tasks ordered by scheduled time slot.
+ * Retrieves tasks ordered by scheduled time slot with automatic deduplication.
  */
 export const fetchPatientTasks = async (patientId: string): Promise<RoutineTask[]> => {
   if (!patientId || patientId === 'demo-patient-koka') {
@@ -749,7 +792,7 @@ export const fetchPatientTasks = async (patientId: string): Promise<RoutineTask[
   }
 
   try {
-    // 1. Try querying patient_tasks table ordered by time_slot
+    // 1. Try querying patient_tasks table filtered specifically by patient_id
     const { data: ptData, error: ptError } = await supabase
       .from('patient_tasks')
       .select('*')
@@ -757,16 +800,37 @@ export const fetchPatientTasks = async (patientId: string): Promise<RoutineTask[
       .order('time_slot', { ascending: true });
 
     if (!ptError && ptData && ptData.length > 0) {
-      // Filter out system telemetry rows and cognitive log rows from the routine schedule
+      // Filter out system telemetry rows, stats, and game session log rows
       const routineRows = ptData.filter(
         (row: any) =>
           row.time_slot !== 'STATS' &&
           row.icon !== 'patient_telemetry' &&
-          row.icon !== 'game_session'
+          row.icon !== 'game_session' &&
+          !row.title?.startsWith('Cognitive Session:') &&
+          !row.title?.startsWith('Patient Telemetry')
       );
 
       if (routineRows.length > 0) {
-        return routineRows.map((row: any) => {
+        // Deduplicate: Keep latest row for each normalized title to prevent duplicate clutter
+        const seenTitles = new Set<string>();
+        const uniqueRows: any[] = [];
+
+        // Sort descending by created_at first so newest or current day record takes priority
+        const sortedByDate = [...routineRows].sort((a, b) => {
+          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          return tB - tA;
+        });
+
+        for (const row of sortedByDate) {
+          const normKey = (row.title || '').trim().toLowerCase();
+          if (!seenTitles.has(normKey)) {
+            seenTitles.add(normKey);
+            uniqueRows.push(row);
+          }
+        }
+
+        return uniqueRows.map((row: any) => {
           const timeVal = row.time_slot || row.time || '09:00 AM';
           const periodVal = (row.period || row.time_of_day || 'morning') as 'morning' | 'afternoon' | 'evening';
           const isDone = !!(row.completed ?? row.is_completed);
@@ -779,8 +843,8 @@ export const fetchPatientTasks = async (patientId: string): Promise<RoutineTask[
             time_slot: timeVal,
             period: periodVal,
             timeOfDay: periodVal,
-            category: (row.category || (row.title.toLowerCase().includes('medicine') || row.title.toLowerCase().includes('tablet') ? 'medication' : row.title.toLowerCase().includes('water') ? 'hydration' : row.title.toLowerCase().includes('walk') ? 'exercise' : 'game')) as any,
-            type: (row.type || (row.title.toLowerCase().includes('medicine') || row.title.toLowerCase().includes('tablet') ? 'medicine' : row.title.toLowerCase().includes('water') ? 'hydration' : row.title.toLowerCase().includes('walk') ? 'exercise' : 'activity')) as any,
+            category: (row.category || (row.title.toLowerCase().includes('medicine') || row.title.toLowerCase().includes('tablet') ? 'medication' : row.title.toLowerCase().includes('water') || row.title.toLowerCase().includes('hydration') ? 'hydration' : row.title.toLowerCase().includes('walk') ? 'exercise' : 'game')) as any,
+            type: (row.type || (row.title.toLowerCase().includes('medicine') || row.title.toLowerCase().includes('tablet') ? 'medicine' : row.title.toLowerCase().includes('water') || row.title.toLowerCase().includes('hydration') ? 'hydration' : row.title.toLowerCase().includes('walk') ? 'exercise' : 'activity')) as any,
             description: row.notes || row.description || '',
             notes: row.notes || row.description || '',
             isCompleted: isDone,
@@ -821,9 +885,9 @@ export const fetchPatientTasks = async (patientId: string): Promise<RoutineTask[
       });
     }
 
-    // 3. If zero tasks found in database for a valid patient, automatically seed the 5 default daily routine tasks
+    // 3. If zero tasks found in database for a valid patient, automatically seed the 4 default daily routine tasks
     if (isValidUuid(patientId)) {
-      console.log('[Supabase DB] Zero tasks found in database for patient, seeding 5 default tasks...');
+      console.log('[Supabase DB] Zero tasks found in database for patient, seeding 4 clean default tasks...');
       return await seedDefaultPatientTasks(patientId);
     }
 
@@ -844,56 +908,48 @@ export const DEFAULT_CORE_TASKS: Array<{
   completed: boolean;
 }> = [
   {
-    title: 'Take Morning Blood Pressure Medicine',
-    timeSlot: '08:00 AM',
+    title: 'Morning Medication & Glass of Water',
+    timeSlot: '08:30 AM',
     period: 'morning',
     category: 'medication',
     type: 'medicine',
-    notes: '1 tablet of Amlodipine (5mg) with warm water after breakfast.',
-    completed: true,
-  },
-  {
-    title: 'Drink Warm Water & Lemon',
-    timeSlot: '08:30 AM',
-    period: 'morning',
-    category: 'hydration',
-    type: 'hydration',
-    notes: 'Staying well hydrated keeps your memory active.',
-    completed: true,
-  },
-  {
-    title: 'Morning Walk in Garden',
-    timeSlot: '10:30 AM',
-    period: 'morning',
-    category: 'exercise',
-    type: 'exercise',
-    notes: 'Take a peaceful 15-minute stroll around the flowers.',
+    notes: 'Take prescribed morning medicines with a full glass of fresh water.',
     completed: false,
   },
   {
-    title: 'Play Cultural Memory Game with Rongmon',
-    timeSlot: '03:30 PM',
-    period: 'afternoon',
+    title: 'Gentle Cognitive Exercise / Memory Game',
+    timeSlot: '11:00 AM',
+    period: 'morning',
     category: 'game',
     type: 'activity',
-    notes: 'Match North-East cultural cards to exercise your mind.',
+    notes: 'Play North-East cultural memory cards with Rongmon to stimulate recall.',
     completed: false,
   },
   {
-    title: 'Take Evening Multivitamin Tablet',
+    title: 'Afternoon Rest & Hydration',
+    timeSlot: '01:30 PM',
+    period: 'afternoon',
+    category: 'hydration',
+    type: 'hydration',
+    notes: 'Rest peacefully and drink a glass of lukewarm water or herbal tea.',
+    completed: false,
+  },
+  {
+    title: 'Evening Medication',
     timeSlot: '08:00 PM',
     period: 'evening',
     category: 'medication',
     type: 'medicine',
-    notes: '1 capsule with dinner as prescribed by Dr. Priya.',
+    notes: 'Take evening multivitamin and prescribed night dose after dinner.',
     completed: false,
   },
 ];
 
 /**
- * Seeds the 5 default daily routine tasks into Supabase ('patient_tasks')
+ * Seeds the 4 clean default daily routine tasks into Supabase ('patient_tasks')
+ * Includes deduplication guards to prevent duplicate row clutter on repeated calls.
  */
-export const seedDefaultPatientTasks = async (patientId: string): Promise<RoutineTask[]> => {
+export const seedDefaultPatientTasks = async (patientId: string, forceReset = false): Promise<RoutineTask[]> => {
   if (!patientId || !isValidUuid(patientId)) {
     return DEFAULT_CORE_TASKS.map((t, i) => ({
       id: `task-default-${i + 1}`,
@@ -913,6 +969,45 @@ export const seedDefaultPatientTasks = async (patientId: string): Promise<Routin
   }
 
   try {
+    // If not a forced reset, check if the patient already has routine tasks
+    if (!forceReset) {
+      const { data: existingTasks } = await supabase
+        .from('patient_tasks')
+        .select('*')
+        .eq('patient_id', patientId)
+        .neq('time_slot', 'STATS')
+        .neq('icon', 'patient_telemetry')
+        .neq('icon', 'game_session');
+
+      if (existingTasks && existingTasks.length > 0) {
+        console.log(`[Supabase DB] Patient already has ${existingTasks.length} tasks. Skipping duplicate seeding.`);
+        return existingTasks.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          time: row.time_slot || '09:00 AM',
+          timeStr: row.time_slot || '09:00 AM',
+          time_slot: row.time_slot || '09:00 AM',
+          period: row.period || 'morning',
+          timeOfDay: row.period || 'morning',
+          category: (row.title.toLowerCase().includes('medicine') ? 'medication' : row.title.toLowerCase().includes('water') ? 'hydration' : 'game') as any,
+          type: (row.title.toLowerCase().includes('medicine') ? 'medicine' : row.title.toLowerCase().includes('water') ? 'hydration' : 'activity') as any,
+          description: row.notes || '',
+          notes: row.notes || '',
+          isCompleted: !!row.completed,
+          completed: !!row.completed,
+        }));
+      }
+    } else {
+      // If force reset, clean up previous routine tasks to remove old duplicates
+      await supabase
+        .from('patient_tasks')
+        .delete()
+        .eq('patient_id', patientId)
+        .neq('time_slot', 'STATS')
+        .neq('icon', 'patient_telemetry')
+        .neq('icon', 'game_session');
+    }
+
     const payload = DEFAULT_CORE_TASKS.map((t) => ({
       patient_id: patientId,
       title: t.title,
@@ -920,6 +1015,7 @@ export const seedDefaultPatientTasks = async (patientId: string): Promise<Routin
       period: t.period,
       notes: t.notes,
       completed: t.completed,
+      icon: 'default',
     }));
 
     const { data, error } = await supabase
@@ -928,7 +1024,7 @@ export const seedDefaultPatientTasks = async (patientId: string): Promise<Routin
       .select();
 
     if (!error && data && data.length > 0) {
-      console.log(`[Supabase DB] Successfully seeded ${data.length} default tasks into Supabase!`);
+      console.log(`[Supabase DB] Successfully seeded ${data.length} clean default tasks into Supabase!`);
       return data.map((row: any) => ({
         id: row.id,
         title: row.title,
@@ -937,20 +1033,8 @@ export const seedDefaultPatientTasks = async (patientId: string): Promise<Routin
         time_slot: row.time_slot,
         period: row.period || 'morning',
         timeOfDay: row.period || 'morning',
-        category: (row.title.toLowerCase().includes('medicine') || row.title.toLowerCase().includes('tablet')
-          ? 'medication'
-          : row.title.toLowerCase().includes('water')
-          ? 'hydration'
-          : row.title.toLowerCase().includes('walk')
-          ? 'exercise'
-          : 'game') as any,
-        type: (row.title.toLowerCase().includes('medicine') || row.title.toLowerCase().includes('tablet')
-          ? 'medicine'
-          : row.title.toLowerCase().includes('water')
-          ? 'hydration'
-          : row.title.toLowerCase().includes('walk')
-          ? 'exercise'
-          : 'activity') as any,
+        category: (row.title.toLowerCase().includes('medicine') ? 'medication' : row.title.toLowerCase().includes('water') ? 'hydration' : 'game') as any,
+        type: (row.title.toLowerCase().includes('medicine') ? 'medicine' : row.title.toLowerCase().includes('water') ? 'hydration' : 'activity') as any,
         description: row.notes || '',
         notes: row.notes || '',
         isCompleted: !!row.completed,
@@ -984,91 +1068,88 @@ export const seedDefaultPatientTasks = async (patientId: string): Promise<Routin
 };
 
 /**
- * 12. Add a Routine Task to Supabase ('patient_tasks' with 'routine_tasks' fallback)
- * Inserts title, time_slot, period (morning/afternoon/evening), and notes using .insert([...]).select().
+ * 12. Create a Routine Task in Supabase ('patient_tasks' with 'routine_tasks' fallback)
+ * Uses crypto.randomUUID() for strict UUID compliance, never static strings.
  */
-export const addPatientTask = async (taskData: {
-  patientId: string;
+export const createTask = async (taskData: {
+  id?: string;
+  patient_id?: string;
+  patientId?: string;
   title: string;
-  timeSlot?: string;
   time_slot?: string;
+  timeSlot?: string;
   time?: string;
-  period?: 'morning' | 'afternoon' | 'evening';
-  timeOfDay?: 'morning' | 'afternoon' | 'evening';
+  period?: 'morning' | 'afternoon' | 'evening' | string;
+  timeOfDay?: 'morning' | 'afternoon' | 'evening' | string;
   notes?: string;
   description?: string;
-  category?: 'medication' | 'hydration' | 'exercise' | 'food' | 'game';
-  type?: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game';
+  icon?: string;
+  priority?: string;
+  category?: 'medication' | 'hydration' | 'exercise' | 'food' | 'game' | string;
+  type?: 'medicine' | 'activity' | 'hydration' | 'food' | 'exercise' | 'game' | string;
 }): Promise<RoutineTask> => {
-  const timeStr = taskData.timeSlot || taskData.time_slot || taskData.time || '09:00 AM';
-  const period = taskData.period || taskData.timeOfDay || 'morning';
+  const taskId = isValidUuid(taskData.id) ? taskData.id! : crypto.randomUUID();
+  const resolvedPatientId = resolveToValidUuid(taskData.patient_id || taskData.patientId);
+
+  const timeVal = taskData.time_slot || taskData.timeSlot || taskData.time || '09:00 AM';
+  const periodVal = ((taskData.period || taskData.timeOfDay || 'morning') as 'morning' | 'afternoon' | 'evening');
   const notesVal = taskData.notes || taskData.description || '';
-  const type = taskData.type || 'medicine';
-  const category = taskData.category || (type === 'medicine' ? 'medication' : (type as any));
+  const typeVal = (taskData.type || (taskData.title.toLowerCase().includes('medicine') ? 'medicine' : taskData.title.toLowerCase().includes('water') ? 'hydration' : 'activity')) as any;
+  const categoryVal = (taskData.category || (typeVal === 'medicine' ? 'medication' : typeVal)) as any;
 
   const newTask: RoutineTask = {
-    id: `task-${Date.now()}`,
+    id: taskId,
     title: taskData.title.trim(),
-    time: timeStr,
-    timeStr: timeStr,
-    time_slot: timeStr,
-    timeOfDay: period,
-    period: period,
-    type: type as any,
-    category: category as any,
+    time: timeVal,
+    timeStr: timeVal,
+    time_slot: timeVal,
+    period: periodVal,
+    timeOfDay: periodVal,
+    type: typeVal,
+    category: categoryVal,
     description: notesVal,
     notes: notesVal,
     isCompleted: false,
     completed: false,
   };
 
-  const targetPatientId = isValidUuid(taskData.patientId) ? taskData.patientId : null;
-  if (!targetPatientId) {
-    console.warn('[Supabase DB] addPatientTask called without a valid patient UUID:', taskData.patientId);
-    return newTask;
-  }
-
   const payload = {
-    patient_id: targetPatientId,
+    id: taskId,
+    patient_id: resolvedPatientId,
     title: taskData.title.trim(),
-    time_slot: timeStr,
-    period: period,
+    time_slot: timeVal,
+    period: periodVal,
     notes: notesVal,
+    icon: taskData.icon || 'default',
     completed: false,
   };
 
-  console.log("Saving patient task payload:", payload);
-
   try {
-    // 1. Insert into patient_tasks table with .select()
     const { data: ptData, error: ptError } = await supabase
       .from('patient_tasks')
       .insert([payload])
       .select();
 
     if (ptError) {
-      console.error('[Supabase DB] Exact Supabase error (patient_tasks):', ptError);
-    }
+      console.error('[Supabase DB] createTask error (patient_tasks):', {
+        message: ptError.message,
+        details: ptError.details,
+        hint: ptError.hint,
+        code: ptError.code,
+      });
 
-    if (!ptError && ptData && ptData.length > 0) {
-      newTask.id = ptData[0].id;
-      return newTask;
-    }
-
-    // 2. Try routine_tasks fallback if patient_tasks table does not exist or has an error
-    if (ptError) {
-      console.warn('[Supabase DB] patient_tasks insert notice, trying routine_tasks fallback:', ptError.message);
+      // Fallback insert to routine_tasks
       const fallbackPayload = {
-        patient_id: targetPatientId,
+        id: taskId,
+        patient_id: resolvedPatientId,
         title: taskData.title.trim(),
         description: notesVal,
-        time_str: timeStr,
-        time_of_day: period,
-        category: category,
-        type: type,
+        time_str: timeVal,
+        time_of_day: periodVal,
+        category: categoryVal,
+        type: typeVal,
         is_completed: false,
       };
-      console.log("Saving patient task payload (routine_tasks fallback):", fallbackPayload);
 
       const { data: rtData, error: rtError } = await supabase
         .from('routine_tasks')
@@ -1076,20 +1157,349 @@ export const addPatientTask = async (taskData: {
         .select();
 
       if (rtError) {
-        console.error('[Supabase DB] Exact Supabase error (routine_tasks):', rtError);
-        throw new Error(rtError.message || ptError.message || 'Failed to insert routine task into database');
+        console.error('[Supabase DB] createTask fallback error (routine_tasks):', {
+          message: rtError.message,
+          details: rtError.details,
+          hint: rtError.hint,
+          code: rtError.code,
+        });
+        throw new Error(rtError.message || ptError.message);
       }
-
       if (rtData && rtData.length > 0) {
         newTask.id = rtData[0].id;
       }
+    } else if (ptData && ptData.length > 0) {
+      newTask.id = ptData[0].id;
     }
   } catch (err: any) {
-    console.error('[Supabase DB] addPatientTask exception:', err);
+    console.error('[Supabase DB] createTask exception:', {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+    });
     throw err;
   }
 
   return newTask;
+};
+
+// Backwards compatibility alias
+export const addPatientTask = createTask;
+
+/**
+ * 12B. Add a Caregiver Team / Family Member with proper UUID and Foreign Keys
+ */
+export const addCaregiverMember = async (memberData: {
+  caregiver_id?: string;
+  caregiverId?: string;
+  patient_id?: string;
+  patientId?: string;
+  name: string;
+  relation?: string;
+  relationship?: string;
+  phone?: string;
+  email?: string;
+  role?: string;
+  age?: number | string;
+  description?: string;
+  quote?: string;
+  avatar_url?: string;
+  avatarUrl?: string;
+}): Promise<FamilyMember> => {
+  const memberId = crypto.randomUUID();
+  const rawPatientId = memberData.patient_id || memberData.patientId;
+  const rawCaregiverId = memberData.caregiver_id || memberData.caregiverId;
+
+  let resolvedPatientId = isValidUuid(rawPatientId) ? rawPatientId! : '';
+
+  if (!resolvedPatientId && isValidUuid(rawCaregiverId)) {
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('linked_patient_id')
+        .eq('id', rawCaregiverId)
+        .maybeSingle();
+      if (data?.linked_patient_id && isValidUuid(data.linked_patient_id)) {
+        resolvedPatientId = data.linked_patient_id;
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  resolvedPatientId = resolveToValidUuid(resolvedPatientId);
+
+  const relationVal = (memberData.relationship || memberData.relation || 'Caregiver Support').trim();
+  const descVal = (memberData.description || 'Caregiver and family support circle.').trim();
+  const quoteVal = (memberData.quote || 'We are here to care for and support you!').trim();
+  const parsedAge = memberData.age ? parseInt(String(memberData.age), 10) || 35 : 35;
+
+  const newMember: FamilyMember = {
+    id: memberId,
+    name: memberData.name.trim(),
+    relation: relationVal,
+    relationship: relationVal,
+    localRelation: `${relationVal} • Caregiver Team`,
+    age: parsedAge,
+    avatarColor: '#10B981',
+    avatarIcon: 'user',
+    voiceMessage: quoteVal,
+    quote: quoteVal,
+    description: descVal,
+    funFact: descVal,
+    lastSpokenDate: 'Just now',
+    avatarUrl: memberData.avatarUrl || memberData.avatar_url,
+  };
+
+  try {
+    const payload: Record<string, any> = {
+      id: memberId,
+      patient_id: resolvedPatientId,
+      name: memberData.name.trim(),
+      relationship: relationVal,
+      relation: relationVal,
+      local_relation: newMember.localRelation,
+      age: parsedAge,
+      description: descVal,
+      quote: quoteVal,
+      avatar_url: memberData.avatarUrl || memberData.avatar_url || null,
+      avatar_color: '#10B981',
+    };
+
+    const { error } = await supabase
+      .from('family_members')
+      .insert([payload])
+      .select();
+
+    if (error) {
+      console.error('[Supabase DB] addCaregiverMember error:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      throw error;
+    }
+  } catch (err: any) {
+    console.error('[Supabase DB] addCaregiverMember exception:', {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+    });
+    throw err;
+  }
+
+  return newMember;
+};
+
+/**
+ * 12C. Add or Register a Patient Profile with strict UUID constraints
+ */
+export const addPatient = async (patientData: {
+  id?: string;
+  name?: string;
+  username?: string;
+  phone?: string;
+  phone_number?: string;
+  dob?: string;
+  date_of_birth?: string;
+  connection_code?: string;
+  caregiver_id?: string | null;
+  caregiverId?: string | null;
+  relationship?: string;
+  relationship_to_patient?: string;
+  avatar_url?: string | null;
+}): Promise<PatientProfileRecord> => {
+  const patientId = isValidUuid(patientData.id) ? patientData.id! : crypto.randomUUID();
+  const rawCaregiverId = patientData.caregiver_id || patientData.caregiverId;
+  const caregiverId = isValidUuid(rawCaregiverId) ? rawCaregiverId! : null;
+
+  const payload: Record<string, any> = {
+    id: patientId,
+    role: 'patient',
+    username: (patientData.name || patientData.username || 'Patient').trim(),
+    phone_number: patientData.phone || patientData.phone_number || null,
+    date_of_birth: patientData.dob || patientData.date_of_birth || null,
+    connection_code: patientData.connection_code || Math.floor(100000 + Math.random() * 900000).toString(),
+    is_paired: !!caregiverId,
+    caregiver_id: caregiverId,
+    relationship_to_patient: patientData.relationship || patientData.relationship_to_patient || null,
+    avatar_url: patientData.avatar_url || null,
+    is_deleted: false,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Supabase DB] addPatient error:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      throw error;
+    }
+
+    return (data as PatientProfileRecord) || payload;
+  } catch (err: any) {
+    console.error('[Supabase DB] addPatient exception:', {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+    });
+    throw err;
+  }
+};
+
+/**
+ * 12D. Link Patient to Caregiver with validation of foreign key UUIDs
+ */
+export const linkPatientToCaregiver = async (
+  caregiverId: string,
+  patientId: string
+): Promise<{ success: boolean; error?: string }> => {
+  if (!isValidUuid(caregiverId) || !isValidUuid(patientId)) {
+    const errMsg = 'Both caregiverId and patientId must be valid UUIDs.';
+    console.error('[Supabase DB] linkPatientToCaregiver validation error:', errMsg, { caregiverId, patientId });
+    return { success: false, error: errMsg };
+  }
+
+  try {
+    const { error: ptError } = await supabase
+      .from('profiles')
+      .update({
+        caregiver_id: caregiverId,
+        is_paired: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', patientId);
+
+    const { error: cgError } = await supabase
+      .from('profiles')
+      .update({
+        linked_patient_id: patientId,
+        is_paired: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', caregiverId);
+
+    if (ptError || cgError) {
+      console.error('[Supabase DB] linkPatientToCaregiver error:', {
+        patientError: ptError ? { message: ptError.message, details: ptError.details, hint: ptError.hint } : null,
+        caregiverError: cgError ? { message: cgError.message, details: cgError.details, hint: cgError.hint } : null,
+      });
+      return { success: false, error: ptError?.message || cgError?.message || 'Failed to link patient to caregiver' };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Supabase DB] linkPatientToCaregiver exception:', {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+    });
+    return { success: false, error: err?.message || 'Exception occurred during linking' };
+  }
+};
+
+/**
+ * 12E. Fetch Patients linked to a Caregiver
+ */
+export const fetchCaregiverPatients = async (caregiverId: string): Promise<PatientProfileRecord[]> => {
+  if (!isValidUuid(caregiverId)) {
+    return [];
+  }
+
+  try {
+    const { data: directPatients, error: dirErr } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'patient')
+      .eq('caregiver_id', caregiverId)
+      .eq('is_deleted', false);
+
+    if (dirErr) {
+      console.error('[Supabase DB] fetchCaregiverPatients direct error:', {
+        message: dirErr.message,
+        details: dirErr.details,
+        hint: dirErr.hint,
+      });
+    }
+
+    const { data: cgProfile } = await supabase
+      .from('profiles')
+      .select('linked_patient_id')
+      .eq('id', caregiverId)
+      .maybeSingle();
+
+    let linkedPatient: PatientProfileRecord | null = null;
+    if (cgProfile?.linked_patient_id && isValidUuid(cgProfile.linked_patient_id)) {
+      const { data: lpData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', cgProfile.linked_patient_id)
+        .eq('is_deleted', false)
+        .maybeSingle();
+      if (lpData) {
+        linkedPatient = lpData as PatientProfileRecord;
+      }
+    }
+
+    const patientMap = new Map<string, PatientProfileRecord>();
+    (directPatients || []).forEach((p: any) => patientMap.set(p.id, p));
+    if (linkedPatient && linkedPatient.id) {
+      patientMap.set(linkedPatient.id, linkedPatient);
+    }
+
+    return Array.from(patientMap.values());
+  } catch (err: any) {
+    console.error('[Supabase DB] fetchCaregiverPatients exception:', {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+    });
+    return [];
+  }
+};
+
+/**
+ * 12F. Fetch Caregiver Support Team / Family Circle
+ */
+export const fetchCaregiverTeam = async (caregiverId: string): Promise<any[]> => {
+  if (!isValidUuid(caregiverId)) {
+    return [];
+  }
+
+  try {
+    const { data: cg } = await supabase
+      .from('profiles')
+      .select('linked_patient_id')
+      .eq('id', caregiverId)
+      .maybeSingle();
+
+    const targetPatientId = cg?.linked_patient_id && isValidUuid(cg.linked_patient_id)
+      ? cg.linked_patient_id
+      : null;
+
+    if (targetPatientId) {
+      return await fetchFamilyMembers(targetPatientId);
+    }
+
+    return [];
+  } catch (err: any) {
+    console.error('[Supabase DB] fetchCaregiverTeam exception:', {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+    });
+    return [];
+  }
 };
 
 /**
@@ -1107,19 +1517,24 @@ export const toggleTaskCompletion = async (taskId: string, completed: boolean): 
         .update({ completed: completed })
         .eq('id', taskId);
 
-      // 2. Update routine_tasks (is_completed column)
+      if (ptError) {
+        console.error('[Supabase DB] Failed to update task status in patient_tasks:', ptError);
+      }
+
+      // 2. Update routine_tasks (is_completed column fallback)
       const { error: rtError } = await supabase
         .from('routine_tasks')
         .update({ is_completed: completed })
         .eq('id', taskId);
 
       if (ptError && rtError) {
-        console.warn('[Supabase DB] toggleTaskCompletion notice:', ptError.message || rtError.message);
+        console.error('[Supabase DB] toggleTaskCompletion failed in both tables:', ptError, rtError);
+        return false;
       }
     }
     return true;
   } catch (err) {
-    console.warn('[Supabase DB] toggleTaskCompletion exception:', err);
+    console.error('[Supabase DB] toggleTaskCompletion exception:', err);
     return false;
   }
 };

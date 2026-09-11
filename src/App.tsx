@@ -8,7 +8,7 @@ import { BottomNav } from './components/common/BottomNav';
 import { FamilyVault } from './components/patient/reminiscence/FamilyVault';
 import { GamesHub } from './components/patient/games/GamesHub';
 import { RoutineTimeline } from './components/patient/routine/RoutineTimeline';
-import { CaregiverDashboard } from './components/caregiver/CaregiverDashboard';
+import { CaregiverPortal } from './components/caregiver/CaregiverPortal';
 import { Login } from './components/auth/Login';
 import { UserManualModal } from './components/common/UserManualModal';
 import { RegionSelectModal } from './components/common/RegionSelectModal';
@@ -111,7 +111,7 @@ const MainContent: React.FC = () => {
               </>
             ) : (
               /* Caregiver Portal */
-              <CaregiverDashboard />
+              <CaregiverPortal />
             )}
           </main>
 

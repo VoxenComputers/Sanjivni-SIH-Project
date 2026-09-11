@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp, RoutineTask } from '../../context/AppContext';
 import { soundFx } from '../../utils/audio';
-import { addPatientTask } from '../../lib/supabaseDb';
+import { addPatientTask, resolveToValidUuid } from '../../lib/supabaseDb';
 import { 
   Pill, 
   UtensilsCrossed, 
@@ -40,7 +40,12 @@ export const TaskManager: React.FC = () => {
       setShowSuccessBadge(true);
       setTimeout(() => setShowSuccessBadge(false), 3000);
     } catch (err: any) {
-      console.error('Failed to restore default tasks:', err);
+      console.error('Failed to restore default tasks:', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code,
+      });
       setErrorMessage(err?.message || 'Failed to restore default tasks.');
     } finally {
       setIsRestoring(false);
@@ -118,10 +123,10 @@ export const TaskManager: React.FC = () => {
   ];
 
   const quickPresets = [
-    { type: 'medicine' as const, period: 'morning' as const, title: 'Blood Pressure Tablet', time: '08:00 AM', desc: '1 tablet with warm water after breakfast' },
-    { type: 'food' as const, period: 'morning' as const, title: 'Warm Lemon Water & Honey', time: '11:00 AM', desc: 'Hydration and immunity boost' },
-    { type: 'activity' as const, period: 'afternoon' as const, title: 'Garden Stroll & Sun', time: '04:30 PM', desc: '15-minute gentle walk around flowers' },
-    { type: 'medicine' as const, period: 'evening' as const, title: 'Evening Memory Multivitamin', time: '08:30 PM', desc: 'Prescribed neuro-cognitive supplement' },
+    { type: 'medicine' as const, period: 'morning' as const, title: 'Morning Medication & Glass of Water', time: '08:30 AM', desc: 'Take prescribed morning medicines with a full glass of fresh water' },
+    { type: 'activity' as const, period: 'morning' as const, title: 'Gentle Cognitive Exercise / Memory Game', time: '11:00 AM', desc: 'Play North-East cultural memory cards with Rongmon' },
+    { type: 'food' as const, period: 'afternoon' as const, title: 'Afternoon Rest & Hydration', time: '01:30 PM', desc: 'Rest peacefully and drink a glass of lukewarm water or herbal tea' },
+    { type: 'medicine' as const, period: 'evening' as const, title: 'Evening Medication', time: '08:00 PM', desc: 'Take evening multivitamin and night dose after dinner' },
   ];
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -136,10 +141,7 @@ export const TaskManager: React.FC = () => {
     setIsSubmitting(true);
     setErrorMessage('');
 
-    const resolvedPatientId =
-      activePatientId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) ||
-      'demo-patient-koka';
+    const resolvedPatientId = resolveToValidUuid(activePatientId);
 
     const category = selectedType === 'medicine' ? 'medication' : (selectedType as any);
     const standardizedTime = formatTimeSlot(time24) || '09:00 AM';
@@ -149,6 +151,7 @@ export const TaskManager: React.FC = () => {
       // 1. Insert into Supabase database (patient_tasks with .select())
       const createdTask = await addPatientTask({
         patientId: resolvedPatientId,
+        patient_id: resolvedPatientId,
         title: title.trim(),
         timeSlot: standardizedTime,
         time_slot: standardizedTime,
@@ -175,7 +178,12 @@ export const TaskManager: React.FC = () => {
       setShowSuccessBadge(true);
       setTimeout(() => setShowSuccessBadge(false), 3000);
     } catch (err: any) {
-      console.error('Failed to add routine task:', err);
+      console.error('Failed to add routine task:', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code,
+      });
       setErrorMessage(err?.message || 'Failed to save task to database.');
     } finally {
       setIsSubmitting(false);
@@ -195,7 +203,17 @@ export const TaskManager: React.FC = () => {
 
   const handleDeleteRoutineTask = async (taskId: string, taskTitle: string) => {
     if (window.confirm(`Are you sure you want to delete "${taskTitle}" from patient routine?`)) {
-      await deleteTask(taskId);
+      try {
+        await deleteTask(taskId);
+      } catch (err: any) {
+        console.error('Failed to delete routine task:', {
+          message: err?.message,
+          details: err?.details,
+          hint: err?.hint,
+          code: err?.code,
+        });
+        setErrorMessage(err?.message || 'Failed to delete task.');
+      }
     }
   };
 

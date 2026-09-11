@@ -501,7 +501,7 @@ export const sendCaregiverAiChat = async (
       parts: [{ text: userMessage }],
     });
 
-    // Attempt generation with gemini-3.6-flash first, falling back to gemini-2.5-flash or gemini-2.0-flash
+    // Attempt generation with gemini-3.6-flash first, falling back to gemini-3.5-flash
     let response;
     try {
       response = await ai.models.generateContent({
@@ -509,18 +509,18 @@ export const sendCaregiverAiChat = async (
         contents,
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.35,
+          temperature: 0.4,
           maxOutputTokens: 1024,
         },
       });
     } catch (modelErr: any) {
-      console.warn('[Caregiver AI] gemini-3.6-flash notice, attempting gemini-2.5-flash:', modelErr?.message);
+      console.warn('[Caregiver AI] gemini-3.6-flash notice, attempting gemini-3.5-flash:', modelErr?.message);
       response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
         contents,
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.35,
+          temperature: 0.4,
           maxOutputTokens: 1024,
         },
       });
@@ -531,6 +531,7 @@ export const sendCaregiverAiChat = async (
       throw new Error('Gemini API returned an empty response');
     }
 
+    console.log('[Caregiver AI] Live Gemini generative response generated successfully');
     return { text: responseText, context, isLiveGemini: true };
   } catch (err: any) {
     console.warn('[Caregiver AI] Gemini API call exception, falling back to clinical engine:', err?.message || err);
@@ -582,15 +583,29 @@ export const streamCaregiverAiChat = async (
     });
 
     let fullText = '';
-    const stream = await ai.models.generateContentStream({
-      model: 'gemini-3.6-flash',
-      contents,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.35,
-        maxOutputTokens: 1024,
-      },
-    });
+    let stream;
+    try {
+      stream = await ai.models.generateContentStream({
+        model: 'gemini-3.6-flash',
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.4,
+          maxOutputTokens: 1024,
+        },
+      });
+    } catch (streamErr: any) {
+      console.warn('[Caregiver AI] gemini-3.6-flash stream notice, attempting gemini-3.5-flash:', streamErr?.message);
+      stream = await ai.models.generateContentStream({
+        model: 'gemini-3.5-flash',
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.4,
+          maxOutputTokens: 1024,
+        },
+      });
+    }
 
     for await (const chunk of stream) {
       const piece = chunk.text || '';
@@ -598,6 +613,7 @@ export const streamCaregiverAiChat = async (
       onChunk(piece);
     }
 
+    console.log('[Caregiver AI] Live Gemini stream completed successfully');
     return { fullText, context, isLiveGemini: true };
   } catch (err: any) {
     console.warn('[Caregiver AI] Stream error, using clinical fallback:', err?.message || err);
