@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { fetchPatientTasks, fetchFamilyMembers, isValidUuid } from '../lib/supabaseDb';
 import { RoutineTask, FamilyMember } from '../context/AppContext';
+import { getGeminiApiKey, GEMINI_MODEL_CASCADE } from './geminiConfig';
 
 export interface PatientChatContext {
   patient: {
@@ -359,9 +360,15 @@ export const sendPatientAiChat = async (
     };
   }
 
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const apiKey = getGeminiApiKey();
 
   if (!apiKey || apiKey === 'your-gemini-api-key' || apiKey.trim() === '') {
+    console.warn(
+      '[Patient AI] ⚠️ Gemini API key is missing on Vercel!\n' +
+      '• To enable live Gemini responses on Vercel: go to Vercel Project Settings -> Environment Variables, add "VITE_GEMINI_API_KEY", and redeploy.\n' +
+      '• You can also enter it manually in Profile Settings to test instantly on Vercel.\n' +
+      '• Falling back to local clinical response engine.'
+    );
     return generateLocalPatientFallback(userMessage, context);
   }
 
@@ -385,35 +392,33 @@ export const sendPatientAiChat = async (
     });
 
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.6,
-          maxOutputTokens: 400,
-        },
-      });
-    } catch (modelErr: any) {
-      console.warn('[Patient AI] gemini-3.6-flash fallback to gemini-3.5-flash:', modelErr?.message);
-      response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.6,
-          maxOutputTokens: 400,
-        },
-      });
+    let successfulModel = '';
+
+    // Cascade through supported models
+    for (const model of GEMINI_MODEL_CASCADE) {
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.6,
+            maxOutputTokens: 400,
+          },
+        });
+        successfulModel = model;
+        break;
+      } catch (modelErr: any) {
+        console.warn(`[Patient AI] Model ${model} notice:`, modelErr?.message || modelErr);
+      }
     }
 
     const responseText = response?.text?.trim() || '';
     if (!responseText) {
-      throw new Error('Empty response from Gemini API');
+      throw new Error('Gemini API returned an empty response across all model candidates.');
     }
 
-    console.log('[Patient AI] Live Gemini generative response generated successfully');
+    console.log(`[Patient AI] Live Gemini generative response generated successfully via ${successfulModel}`);
 
     // Post-generation check: verify model didn't suggest emergency/dosage
     const postCheck = checkEmergencyIntent(responseText);
@@ -426,7 +431,18 @@ export const sendPatientAiChat = async (
       isLiveGemini: true,
     };
   } catch (err: any) {
-    console.warn('[Patient AI] Gemini API call notice, using local safety engine:', err?.message || err);
+    console.error('[Patient AI] Gemini API call exception on Vercel:', {
+      message: err?.message,
+      status: err?.status,
+      code: err?.code,
+      hint: err?.message?.includes('403')
+        ? 'Check if your Google Gemini API key has HTTP referrer restrictions in Google Cloud Console blocking your Vercel domain.'
+        : err?.message?.includes('404')
+        ? 'Model not found; check API version.'
+        : err?.message?.includes('429')
+        ? 'Quota exceeded on Gemini API.'
+        : 'Verify API key permissions in Google AI Studio.',
+    });
     return generateLocalPatientFallback(userMessage, context);
   }
 };

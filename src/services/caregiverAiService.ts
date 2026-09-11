@@ -6,6 +6,7 @@ import {
   fetchFamilyMembers 
 } from '../lib/supabaseDb';
 import { RoutineTask, GameScoreRecord, FamilyMember } from '../context/AppContext';
+import { getGeminiApiKey, GEMINI_MODEL_CASCADE } from './geminiConfig';
 
 export interface HealthAnomalyAlert {
   id: string;
@@ -473,9 +474,14 @@ export const sendCaregiverAiChat = async (
   localState?: any
 ): Promise<{ text: string; context: PatientHealthContext; isLiveGemini: boolean }> => {
   const context = await buildPatientHealthContext(patientId, localState);
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const apiKey = getGeminiApiKey();
 
   if (!apiKey || apiKey === 'your-gemini-api-key' || apiKey.trim() === '') {
+    console.warn(
+      '[Caregiver AI] ⚠️ Gemini API key is missing on Vercel!\n' +
+      '• To enable live Gemini responses on Vercel: go to Vercel Project Settings -> Environment Variables, add "VITE_GEMINI_API_KEY", and redeploy.\n' +
+      '• Falling back to local clinical response engine.'
+    );
     const fallbackText = generateLocalClinicalFallback(userMessage, context);
     return { text: fallbackText, context, isLiveGemini: false };
   }
@@ -501,40 +507,47 @@ export const sendCaregiverAiChat = async (
       parts: [{ text: userMessage }],
     });
 
-    // Attempt generation with gemini-3.6-flash first, falling back to gemini-3.5-flash
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.4,
-          maxOutputTokens: 1024,
-        },
-      });
-    } catch (modelErr: any) {
-      console.warn('[Caregiver AI] gemini-3.6-flash notice, attempting gemini-3.5-flash:', modelErr?.message);
-      response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.4,
-          maxOutputTokens: 1024,
-        },
-      });
+    let successfulModel = '';
+
+    for (const model of GEMINI_MODEL_CASCADE) {
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.4,
+            maxOutputTokens: 1024,
+          },
+        });
+        successfulModel = model;
+        break;
+      } catch (modelErr: any) {
+        console.warn(`[Caregiver AI] ${model} attempt notice:`, modelErr?.message || modelErr);
+      }
     }
 
     const responseText = response?.text || '';
     if (!responseText) {
-      throw new Error('Gemini API returned an empty response');
+      throw new Error('Gemini API returned an empty response across all model candidates');
     }
 
-    console.log('[Caregiver AI] Live Gemini generative response generated successfully');
+    console.log(`[Caregiver AI] Live Gemini generative response generated successfully via ${successfulModel}`);
     return { text: responseText, context, isLiveGemini: true };
   } catch (err: any) {
-    console.warn('[Caregiver AI] Gemini API call exception, falling back to clinical engine:', err?.message || err);
+    console.error('[Caregiver AI] Gemini API call exception on Vercel:', {
+      message: err?.message,
+      status: err?.status,
+      code: err?.code,
+      hint: err?.message?.includes('403')
+        ? 'Check if your Google Gemini API key has HTTP referrer restrictions in Google Cloud Console blocking your Vercel domain.'
+        : err?.message?.includes('404')
+        ? 'Model not found; check API version.'
+        : err?.message?.includes('429')
+        ? 'Quota exceeded on Gemini API.'
+        : 'Verify API key permissions in Google AI Studio.',
+    });
     const fallbackText = generateLocalClinicalFallback(userMessage, context);
     return { text: fallbackText, context, isLiveGemini: false };
   }
@@ -551,7 +564,7 @@ export const streamCaregiverAiChat = async (
   localState?: any
 ): Promise<{ fullText: string; context: PatientHealthContext; isLiveGemini: boolean }> => {
   const context = await buildPatientHealthContext(patientId, localState);
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const apiKey = getGeminiApiKey();
 
   if (!apiKey || apiKey === 'your-gemini-api-key' || apiKey.trim() === '') {
     const fallbackText = generateLocalClinicalFallback(userMessage, context);
@@ -584,27 +597,28 @@ export const streamCaregiverAiChat = async (
 
     let fullText = '';
     let stream;
-    try {
-      stream = await ai.models.generateContentStream({
-        model: 'gemini-3.6-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.4,
-          maxOutputTokens: 1024,
-        },
-      });
-    } catch (streamErr: any) {
-      console.warn('[Caregiver AI] gemini-3.6-flash stream notice, attempting gemini-3.5-flash:', streamErr?.message);
-      stream = await ai.models.generateContentStream({
-        model: 'gemini-3.5-flash',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.4,
-          maxOutputTokens: 1024,
-        },
-      });
+    let successfulModel = '';
+
+    for (const model of GEMINI_MODEL_CASCADE) {
+      try {
+        stream = await ai.models.generateContentStream({
+          model,
+          contents,
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.4,
+            maxOutputTokens: 1024,
+          },
+        });
+        successfulModel = model;
+        break;
+      } catch (streamErr: any) {
+        console.warn(`[Caregiver AI] ${model} stream attempt notice:`, streamErr?.message || streamErr);
+      }
+    }
+
+    if (!stream) {
+      throw new Error('All model stream attempts failed');
     }
 
     for await (const chunk of stream) {
@@ -613,10 +627,14 @@ export const streamCaregiverAiChat = async (
       onChunk(piece);
     }
 
-    console.log('[Caregiver AI] Live Gemini stream completed successfully');
+    console.log(`[Caregiver AI] Live Gemini stream completed successfully via ${successfulModel}`);
     return { fullText, context, isLiveGemini: true };
   } catch (err: any) {
-    console.warn('[Caregiver AI] Stream error, using clinical fallback:', err?.message || err);
+    console.error('[Caregiver AI] Stream error on Vercel:', {
+      message: err?.message,
+      status: err?.status,
+      code: err?.code,
+    });
     const fallbackText = generateLocalClinicalFallback(userMessage, context);
     onChunk(fallbackText);
     return { fullText: fallbackText, context, isLiveGemini: false };
