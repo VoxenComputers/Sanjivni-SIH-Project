@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { speechSynth } from '../../utils/speech';
 import { soundFx } from '../../utils/audio';
 import { useApp } from '../../context/AppContext';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Volume2, VolumeX, Loader2 } from 'lucide-react';
 
 interface SpeechButtonProps {
   text: string;
@@ -19,21 +19,30 @@ export const SpeechButton: React.FC<SpeechButtonProps> = ({
 }) => {
   const { language } = useApp();
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const handleToggleSpeak = (e: React.MouseEvent) => {
     e.stopPropagation();
     soundFx.playClickSound();
 
-    if (isSpeaking) {
+    if (isSpeaking || isLoading) {
       speechSynth.stop();
       setIsSpeaking(false);
+      setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
     speechSynth.speak(
       text,
-      () => setIsSpeaking(true),
-      () => setIsSpeaking(false),
+      () => {
+        setIsLoading(false);
+        setIsSpeaking(true);
+      },
+      () => {
+        setIsLoading(false);
+        setIsSpeaking(false);
+      },
       language
     );
   };
@@ -54,11 +63,25 @@ export const SpeechButton: React.FC<SpeechButtonProps> = ({
     <button
       type="button"
       onClick={handleToggleSpeak}
-      aria-label={isSpeaking ? `Stop reading aloud: ${text}` : `Read aloud: ${text}`}
-      title={isSpeaking ? 'Stop reading aloud' : 'Listen aloud (Text-to-Speech)'}
+      aria-label={
+        isLoading
+          ? `Loading audio: ${text}`
+          : isSpeaking
+          ? `Stop reading aloud: ${text}`
+          : `Read aloud: ${text}`
+      }
+      title={
+        isLoading
+          ? 'Loading audio...'
+          : isSpeaking
+          ? 'Stop reading aloud'
+          : 'Listen aloud (Text-to-Speech)'
+      }
       className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-black transition-all select-none cursor-pointer flex-shrink-0 ${
         isSpeaking
           ? 'bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border-2 border-amber-500 shadow-duo-amber scale-105'
+          : isLoading
+          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border-2 border-emerald-400 dark:border-emerald-600 shadow-sm'
           : 'bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border-2 border-emerald-300 dark:border-emerald-700 hover:border-emerald-500 shadow-sm active:translate-y-0.5'
       } ${sizeClasses[size]} ${className}`}
     >
@@ -70,6 +93,11 @@ export const SpeechButton: React.FC<SpeechButtonProps> = ({
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
           </span>
+        </>
+      ) : isLoading ? (
+        <>
+          <Loader2 className={`${iconSizes[size]} text-emerald-700 dark:text-emerald-300 animate-spin`} />
+          {label && <span className="font-extrabold">{label}</span>}
         </>
       ) : (
         <>

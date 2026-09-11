@@ -14,11 +14,12 @@ import {
   Sun,
   CloudSun,
   Moon,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 
 export const TaskManager: React.FC = () => {
-  const { tasks, addTask, activePatientId, t } = useApp();
+  const { tasks, addTask, deleteTask, restoreDefaultTasks, activePatientId, t } = useApp();
 
   const [selectedType, setSelectedType] = useState<'medicine' | 'food' | 'activity'>('medicine');
   const [selectedPeriod, setSelectedPeriod] = useState<'morning' | 'afternoon' | 'evening'>('morning');
@@ -26,8 +27,25 @@ export const TaskManager: React.FC = () => {
   const [time24, setTime24] = useState('09:00');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [showSuccessBadge, setShowSuccessBadge] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const handleRestoreDefaults = async () => {
+    soundFx.playClickSound();
+    setIsRestoring(true);
+    setErrorMessage('');
+    try {
+      await restoreDefaultTasks();
+      setShowSuccessBadge(true);
+      setTimeout(() => setShowSuccessBadge(false), 3000);
+    } catch (err: any) {
+      console.error('Failed to restore default tasks:', err);
+      setErrorMessage(err?.message || 'Failed to restore default tasks.');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
 
   // 1. Standardized 12-hour Time Slot Formatter
   const formatTimeSlot = (time24Val: string): string => {
@@ -173,6 +191,12 @@ export const TaskManager: React.FC = () => {
     setTime24(converted24);
     setDescription(preset.desc);
     setErrorMessage('');
+  };
+
+  const handleDeleteRoutineTask = async (taskId: string, taskTitle: string) => {
+    if (window.confirm(`Are you sure you want to delete "${taskTitle}" from patient routine?`)) {
+      await deleteTask(taskId);
+    }
   };
 
   return (
@@ -362,6 +386,117 @@ export const TaskManager: React.FC = () => {
           )}
         </button>
       </form>
+
+      {/* Empty State: Option to restore standard 5 daily routines */}
+      {tasks.length === 0 && (
+        <div className="border-t-2 border-stone-100 dark:border-stone-800 pt-5 text-center p-6 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border-2 border-dashed border-emerald-300/70 dark:border-emerald-700/60">
+          <CalendarCheck2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
+          <h4 className="text-base font-black text-stone-900 dark:text-white">
+            No Active Tasks Scheduled
+          </h4>
+          <p className="text-xs text-stone-600 dark:text-stone-300 max-w-sm mx-auto mt-1 mb-4 font-bold">
+            Patient's routine timeline is currently empty. Tap below to seed the standard 5 daily health routines into the database.
+          </p>
+          <button
+            type="button"
+            onClick={handleRestoreDefaults}
+            disabled={isRestoring}
+            className="duo-btn duo-btn-green py-2.5 px-4 text-xs sm:text-sm font-black inline-flex items-center gap-2 shadow-duo-green cursor-pointer disabled:opacity-50"
+          >
+            {isRestoring ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Restoring to Database...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 text-yellow-300" />
+                <span>Restore 5 Default Daily Tasks</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Active Tasks Scheduled for Patient */}
+      {tasks.length > 0 && (
+        <div className="border-t-2 border-stone-100 dark:border-stone-800 pt-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight flex items-center gap-2">
+              <span>Active Scheduled Routines</span>
+              <span className="text-xs bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 px-2 py-0.5 rounded-full border border-stone-200 dark:border-stone-700 font-black">
+                {tasks.length}
+              </span>
+            </h4>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestoreDefaults}
+                disabled={isRestoring}
+                title="Restore default 5 tasks"
+                className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3 text-yellow-500" />
+                <span>Reset Defaults</span>
+              </button>
+              <span className="text-[11px] font-bold text-stone-400 hidden sm:inline">
+                • Live Synced
+              </span>
+            </div>
+          </div>
+
+          <div className="divide-y divide-stone-100 dark:divide-stone-800 max-h-64 overflow-y-auto pr-1 space-y-1">
+            {tasks.map((task) => {
+              const taskTitle = task.titleKey ? t(task.titleKey) : task.title;
+              const timeDisplay = task.time_slot || task.timeStr || task.time || '09:00 AM';
+              const isDone = !!(task.completed || task.isCompleted);
+              return (
+                <div
+                  key={task.id}
+                  className="py-2.5 px-3 rounded-2xl bg-stone-50/80 dark:bg-stone-800/60 border border-stone-200/80 dark:border-stone-700/80 flex items-center justify-between gap-3 transition-colors hover:border-stone-300"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-[11px] font-black uppercase px-2 py-0.5 rounded-lg border bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 flex-shrink-0">
+                      {timeDisplay}
+                    </span>
+                    <div className="min-w-0">
+                      <p className={`text-xs sm:text-sm font-bold truncate ${isDone ? 'line-through text-stone-400 dark:text-stone-500' : 'text-stone-800 dark:text-stone-100'}`}>
+                        {taskTitle}
+                      </p>
+                      {(task.notes || task.description) && (
+                        <p className="text-[11px] text-stone-400 truncate">
+                          {task.notes || task.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                        isDone
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                          : 'bg-stone-100 dark:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-600'
+                      }`}
+                    >
+                      {isDone ? 'Done' : 'Pending'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRoutineTask(task.id, taskTitle)}
+                      title="Delete routine task"
+                      aria-label={`Delete task ${taskTitle}`}
+                      className="p-1.5 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-800 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

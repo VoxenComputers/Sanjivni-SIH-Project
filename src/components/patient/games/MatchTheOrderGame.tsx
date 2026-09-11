@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { soundFx } from '../../../utils/audio';
+import { speechSynth } from '../../../utils/speech';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import { getGameAssetUrl, REGION_ASSETS, normalizeRegionId, getFallbackGameAssetUrl } from '../../../utils/assetManager';
@@ -108,9 +109,7 @@ export const MatchTheOrderGame: React.FC<MatchTheOrderGameProps> = ({ onBack }) 
     const handleVisibilityChange = () => {
       if (document.hidden) {
         clearFlashTimers();
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-        }
+        speechSynth.stop();
         soundFx.stopAll();
       }
     };

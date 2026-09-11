@@ -10,8 +10,14 @@ import {
   isValidUuid,
   fetchFamilyMembers,
   fetchPatientTasks,
+  seedDefaultPatientTasks,
   addPatientTask,
+  deletePatientTask,
   toggleTaskCompletion as toggleTaskCompletionDb,
+  calculateDynamicMmse,
+  fetchPatientTelemetry,
+  savePatientTelemetry,
+  recordGameSessionInDb,
 } from '../lib/supabaseDb';
 import {
   LocationData,
@@ -174,10 +180,13 @@ interface AppContextType {
     titleKey?: string;
     descKey?: string;
   }) => void;
+  deleteTask: (id: string) => Promise<void>;
+  restoreDefaultTasks: () => Promise<void>;
   toggleTaskCompletion: (id: string) => void;
   toggleTask: (id: string) => void;
   streak: number;
   totalStars: number;
+  mmseScore: number;
   gameHistory: GameScoreRecord[];
   recordGameCompletion: (gameName: string, score: number, moves: number, timeSec: number, accuracy: number) => void;
   geofence: GeofenceState;
@@ -286,20 +295,6 @@ const INITIAL_TASKS: RoutineTask[] = [
   },
   {
     id: 'task-4',
-    time: '1:00 PM',
-    timeStr: '1:00 PM',
-    timeOfDay: 'afternoon',
-    title: 'Drink Warm Water & Lemon',
-    description: 'Staying well hydrated keeps your memory active',
-    titleKey: 'taskHydrationTitle',
-    descKey: 'taskHydrationDesc',
-    type: 'hydration',
-    category: 'hydration',
-    isCompleted: false,
-    completed: false,
-  },
-  {
-    id: 'task-5',
     time: '3:30 PM',
     timeStr: '3:30 PM',
     timeOfDay: 'afternoon',
@@ -313,7 +308,7 @@ const INITIAL_TASKS: RoutineTask[] = [
     completed: false,
   },
   {
-    id: 'task-6',
+    id: 'task-5',
     time: '8:00 PM',
     timeStr: '8:00 PM',
     timeOfDay: 'evening',
@@ -433,18 +428,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (userRole === 'caregiver' || mode === 'caregiver') {
       if (typeof window !== 'undefined') {
         const linkedId = localStorage.getItem('smriti_linked_patient_id');
-        if (linkedId && linkedId !== 'demo-patient-koka') return linkedId;
+        if (linkedId && linkedId !== 'demo-patient-koka' && isValidUuid(linkedId)) return linkedId;
       }
-      return null;
+      return '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
     }
 
     // 2. If authenticated Supabase user (patient)
-    if (auth.user?.id) {
+    if (auth.user?.id && isValidUuid(auth.user.id)) {
       return auth.user.id;
     }
 
     // 3. If appUser has an ID and not demo
-    if (auth.appUser?.id && auth.appUser.id !== 'demo-patient') {
+    if (auth.appUser?.id && auth.appUser.id !== 'demo-patient' && isValidUuid(auth.appUser.id)) {
       return auth.appUser.id;
     }
 
@@ -454,16 +449,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (savedPatient) {
         try {
           const parsed = JSON.parse(savedPatient);
-          if (parsed?.id && parsed.id !== 'demo-patient') return parsed.id;
+          if (parsed?.id && parsed.id !== 'demo-patient' && isValidUuid(parsed.id)) return parsed.id;
         } catch (e) {
           // ignore
         }
       }
       const linkedId = localStorage.getItem('smriti_linked_patient_id');
-      if (linkedId && linkedId !== 'demo-patient-koka') return linkedId;
+      if (linkedId && linkedId !== 'demo-patient-koka' && isValidUuid(linkedId)) return linkedId;
     }
 
-    return null;
+    return '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
   }, [auth.user?.id, auth.appUser?.id, userRole, mode]);
 
   const [isLoadingFamily, setIsLoadingFamily] = useState<boolean>(false);
@@ -539,20 +534,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await loadFamilyMembersFromDb();
   }, [loadFamilyMembersFromDb]);
 
-  // Tasks Database Loader & Realtime Sync
+  // Tasks Database Loader & Telemetry Realtime Sync
   const loadTasksFromDb = useCallback(async (targetPatientId?: string | null) => {
     const idToQuery = targetPatientId || activePatientId;
-    if (!idToQuery || idToQuery === 'demo-patient-koka') {
+    if (!idToQuery || idToQuery === 'demo-patient-koka' || !isValidUuid(idToQuery)) {
       return;
     }
 
     try {
+      let resolvedTasks: RoutineTask[] = [];
       const liveTasks = await fetchPatientTasks(idToQuery);
       if (liveTasks && liveTasks.length > 0) {
+        resolvedTasks = liveTasks;
         setTasks(liveTasks);
         if (typeof window !== 'undefined') {
           localStorage.setItem('smriti_tasks', JSON.stringify(liveTasks));
         }
+      } else {
+        const seeded = await seedDefaultPatientTasks(idToQuery);
+        resolvedTasks = seeded;
+        setTasks(seeded);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('smriti_tasks', JSON.stringify(seeded));
+        }
+      }
+
+      // Synchronize streak, totalStars, and MMSE stability score with Supabase
+      const telemetry = await fetchPatientTelemetry(idToQuery);
+      if (telemetry) {
+        setStreak(telemetry.streak);
+        setTotalStars(telemetry.totalStars);
+        setMmseScore(telemetry.mmseScore);
+      } else if (resolvedTasks.length > 0) {
+        const dynamicMmse = calculateDynamicMmse(resolvedTasks, 90);
+        setMmseScore(dynamicMmse);
+        await savePatientTelemetry(idToQuery, {
+          streak: 5,
+          totalStars: 240,
+          mmseScore: dynamicMmse,
+        });
       }
     } catch (err) {
       console.warn('[AppContext] loadTasksFromDb exception:', err);
@@ -686,7 +706,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [tasks, setTasks] = useState<RoutineTask[]>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('smriti_tasks') : null;
-    return saved ? JSON.parse(saved) : INITIAL_TASKS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return INITIAL_TASKS;
   });
 
   const [customPatient, setCustomPatient] = useState<{ name?: string; avatar?: string } | null>(() => {
@@ -715,6 +745,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [localizedPatient, customPatient]);
   const [streak, setStreak] = useState<number>(5);
   const [totalStars, setTotalStars] = useState<number>(240);
+  const [mmseScore, setMmseScore] = useState<number>(25.8);
   const [gameHistory, setGameHistory] = useState<GameScoreRecord[]>(INITIAL_GAMES);
 
   const [geofence, setGeofence] = useState<GeofenceState>({
@@ -1189,18 +1220,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleTaskCompletion = (id: string) => {
     soundFx.playClickSound();
-    setTasks(prev =>
-      prev.map(t => {
+    setTasks(prev => {
+      let nextState = false;
+      const updated = prev.map(t => {
         if (t.id === id) {
           const currentStatus = t.isCompleted ?? t.completed;
-          const nextState = !currentStatus;
+          nextState = !currentStatus;
           if (nextState) {
             soundFx.playSuccessChime();
           }
-          // Live Supabase update
-          toggleTaskCompletionDb(id, nextState).catch(err => {
-            console.warn('[AppContext] toggleTaskCompletionDb sync notice:', err);
-          });
           return {
             ...t,
             isCompleted: nextState,
@@ -1208,12 +1236,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
         }
         return t;
-      })
-    );
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('smriti_tasks', JSON.stringify(updated));
+      }
+
+      // Dynamically calculate new MMSE stability score from task adherence
+      const newMmse = calculateDynamicMmse(updated, 90);
+      setMmseScore(newMmse);
+
+      // Persist task state & updated telemetry to Supabase
+      const targetId = activePatientId || (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) || '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+      if (targetId && isValidUuid(targetId)) {
+        toggleTaskCompletionDb(id, nextState).catch(err => {
+          console.warn('[AppContext] toggleTaskCompletionDb sync notice:', err);
+        });
+        savePatientTelemetry(targetId, {
+          streak,
+          totalStars,
+          mmseScore: newMmse,
+        }).catch(err => {
+          console.warn('[AppContext] savePatientTelemetry sync notice:', err);
+        });
+      }
+
+      return updated;
+    });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated'));
+    }
   };
 
   const toggleTask = (id: string) => {
     toggleTaskCompletion(id);
+  };
+
+  const deleteTask = async (taskId: string) => {
+    soundFx.playClickSound();
+    // 1. Optimistic removal from local state & storage
+    setTasks(prev => {
+      const updated = prev.filter(t => t.id !== taskId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('smriti_tasks', JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    // 2. Dispatch cross-component and multi-tab sync event
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated', { detail: { deletedId: taskId } }));
+    }
+
+    // 3. Delete from Supabase database
+    try {
+      if (isValidUuid(taskId)) {
+        await deletePatientTask(taskId);
+      }
+    } catch (err) {
+      console.warn('[AppContext] deleteTask live sync warning:', err);
+    }
+  };
+
+  const restoreDefaultTasks = async () => {
+    soundFx.playSuccessChime();
+    const targetId = activePatientId || (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) || '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+    let seededTasks: RoutineTask[] = INITIAL_TASKS;
+    if (targetId && isValidUuid(targetId)) {
+      seededTasks = await seedDefaultPatientTasks(targetId);
+    }
+    setTasks(seededTasks);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('smriti_tasks', JSON.stringify(seededTasks));
+      window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated'));
+    }
   };
 
   const addTask = (newTask: Partial<RoutineTask> & {
@@ -1302,6 +1399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     timeSec: number,
     accuracy: number
   ) => {
+    soundFx.playSuccessChime();
     const newRecord: GameScoreRecord = {
       id: `g-${Date.now()}`,
       game: gameName,
@@ -1312,8 +1410,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       accuracy,
     };
     setGameHistory(prev => [newRecord, ...prev]);
-    setTotalStars(prev => prev + 25);
-    setStreak(prev => (prev === 5 ? 6 : prev));
+
+    const nextStars = totalStars + 25;
+    const nextStreak = streak + 1;
+    setTotalStars(nextStars);
+    setStreak(nextStreak);
+
+    // Auto-mark any daily routine game task as completed
+    let hasUpdatedGameTask = false;
+    const updatedTasks = tasks.map(t => {
+      const isGameTask =
+        t.type === 'game' ||
+        t.category === 'game' ||
+        t.title.toLowerCase().includes('game') ||
+        t.title.toLowerCase().includes('memory') ||
+        t.title.toLowerCase().includes('rongmon');
+      if (isGameTask && !(t.isCompleted ?? t.completed)) {
+        hasUpdatedGameTask = true;
+        return { ...t, isCompleted: true, completed: true };
+      }
+      return t;
+    });
+
+    if (hasUpdatedGameTask) {
+      setTasks(updatedTasks);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('smriti_tasks', JSON.stringify(updatedTasks));
+        window.dispatchEvent(new CustomEvent('sanjivni:tasks-updated'));
+      }
+    }
+
+    // Dynamic MMSE calculation reflecting task adherence and game accuracy
+    const newMmse = calculateDynamicMmse(updatedTasks, accuracy);
+    setMmseScore(newMmse);
+
+    // Sync cognitive session, routine game task, and telemetry to Supabase
+    const targetId = activePatientId || (typeof window !== 'undefined' ? localStorage.getItem('smriti_linked_patient_id') : null) || '70fde7c0-c85e-4c3d-bc49-8ea172128ebd';
+    if (targetId && isValidUuid(targetId)) {
+      recordGameSessionInDb(
+        targetId,
+        { game: gameName, score, moves, timeSeconds: timeSec, accuracy },
+        { streak: nextStreak, totalStars: nextStars, mmseScore: newMmse }
+      ).catch(err => {
+        console.warn('[AppContext] recordGameSessionInDb sync notice:', err);
+      });
+    }
   };
 
   const toggleWanderingSimulation = () => {
@@ -1431,10 +1572,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         familyMembers,
         tasks,
         addTask,
+        deleteTask,
+        restoreDefaultTasks,
         toggleTaskCompletion,
         toggleTask,
         streak,
         totalStars,
+        mmseScore,
         gameHistory,
         recordGameCompletion,
         geofence,

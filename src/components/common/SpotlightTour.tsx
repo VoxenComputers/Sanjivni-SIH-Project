@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { soundFx } from '../../utils/audio';
+import { speechSynth } from '../../utils/speech';
 import { SpeechButton } from './SpeechButton';
 import { ChevronRight, ChevronLeft, Check, X, Compass } from 'lucide-react';
 
@@ -80,10 +81,7 @@ export const SpotlightTour: React.FC = () => {
   useEffect(() => {
     if (!isSpotlightActive) return;
 
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-
+    speechSynth.stop();
     soundFx.playClickSound();
   }, [spotlightStep, isSpotlightActive]);
 

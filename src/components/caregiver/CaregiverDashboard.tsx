@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Bell,
   Clock,
+  Trash2,
 } from 'lucide-react';
 
 // Helper to parse time string ("8:00 AM", "01:30 PM", "8:00 PM") into minutes from midnight
@@ -41,11 +42,19 @@ export const CaregiverDashboard: React.FC = () => {
   const { 
     patient, 
     tasks, 
+    deleteTask,
     toggleTaskCompletion, 
     streak, 
+    mmseScore,
     t, 
     language 
   } = useApp();
+
+  const handleDeleteTask = async (taskId: string, titleStr: string) => {
+    if (window.confirm(`Delete routine reminder "${titleStr}"? This will remove it from Koka's daily schedule.`)) {
+      await deleteTask(taskId);
+    }
+  };
 
   // Simulated time toggle for testing/evaluation (default uses real local time)
   const [simulatedHour, setSimulatedHour] = useState<number | null>(null);
@@ -82,7 +91,7 @@ export const CaregiverDashboard: React.FC = () => {
   const completedTasks = tasks.filter((t) => t.isCompleted ?? t.completed).length;
   const taskAdherence = Math.round((completedTasks / tasks.length) * 100);
 
-  // Simulated 30-Day MMSE (Mini-Mental State Examination) cognitive stability tracking points
+  // Dynamic 30-Day MMSE (Mini-Mental State Examination) cognitive stability tracking points
   // Normal/MCI boundary is around 24-27. Stability over 30 days is the clinical goal.
   const mmseTrend = [
     { day: 'Day 1', score: 24.5 },
@@ -91,7 +100,7 @@ export const CaregiverDashboard: React.FC = () => {
     { day: 'Day 15', score: 25.2 },
     { day: 'Day 20', score: 25.0 },
     { day: 'Day 25', score: 25.5 },
-    { day: 'Today', score: 25.8 },
+    { day: 'Today', score: Number((mmseScore ?? 25.8).toFixed(1)) },
   ];
 
   return (
@@ -217,7 +226,9 @@ export const CaregiverDashboard: React.FC = () => {
             {/* Cognitive Score */}
             <div className="bg-stone-100 dark:bg-stone-800 border-2 border-stone-300 dark:border-stone-700 rounded-2xl p-3 text-center">
               <span className="text-xs font-bold text-stone-700 dark:text-stone-300 uppercase block">MMSE Score</span>
-              <span className="text-2xl sm:text-3xl font-black text-brand-dark dark:text-white">25.8 / 30</span>
+              <span className="text-2xl sm:text-3xl font-black text-brand-dark dark:text-white">
+                {(mmseScore ?? 25.8).toFixed(1)} / 30
+              </span>
             </div>
           </div>
         </div>
@@ -250,9 +261,13 @@ export const CaregiverDashboard: React.FC = () => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1 text-xs font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-300 dark:border-emerald-800">
+            <div className={`flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-full border ${
+              (mmseScore ?? 25.8) >= 24
+                ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-800'
+                : 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 border-amber-300 dark:border-amber-800'
+            }`}>
               <TrendingUp className="w-4 h-4" />
-              <span>+1.3 Pt Stable</span>
+              <span>{(mmseScore ?? 25.8) >= 24 ? '+1.3 Pt Stable' : 'Attention Required'}</span>
             </div>
           </div>
 
@@ -325,15 +340,26 @@ export const CaregiverDashboard: React.FC = () => {
                       <span className="text-xs font-semibold text-stone-400">{task.timeStr}</span>
                     </div>
                   </div>
-                  <span
-                    className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
-                      task.completed
-                        ? 'bg-green-100 dark:bg-emerald-950 text-brand-green-dark dark:text-emerald-300 border-green-300 dark:border-emerald-800'
-                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
-                    }`}
-                  >
-                    {task.completed ? 'Completed' : 'Pending'}
-                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span
+                      className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
+                        task.completed
+                          ? 'bg-green-100 dark:bg-emerald-950 text-brand-green-dark dark:text-emerald-300 border-green-300 dark:border-emerald-800'
+                          : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                      }`}
+                    >
+                      {task.completed ? 'Completed' : 'Pending'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTask(task.id, taskTitle)}
+                      title="Delete routine task"
+                      aria-label={`Delete task ${taskTitle}`}
+                      className="p-1.5 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-800 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               );
             })}

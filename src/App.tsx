@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
+import { speechSynth } from './utils/speech';
 import { soundFx } from './utils/audio';
 import { Header } from './components/common/Header';
 import { BottomNav } from './components/common/BottomNav';
@@ -16,6 +17,7 @@ import { RoleSelectionModal } from './components/auth/RoleSelectionModal';
 import { PinLockModal } from './components/auth/PinLockModal';
 import { ProfileSettingsModal } from './components/common/ProfileSettingsModal';
 import { CaregiverSetupWizard } from './components/caregiver/CaregiverSetupWizard';
+import { PatientAssistantModal } from './components/patient/PatientAssistantModal';
 import { HeartHandshake } from 'lucide-react';
 
 const MainContent: React.FC = () => {
@@ -38,9 +40,7 @@ const MainContent: React.FC = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-        }
+        speechSynth.stop();
         soundFx.stopAll();
       }
     };
@@ -107,6 +107,7 @@ const MainContent: React.FC = () => {
                 {patientTab === 'reminisce' && <FamilyVault />}
                 {patientTab === 'games' && <GamesHub />}
                 {patientTab === 'routine' && <RoutineTimeline />}
+                <PatientAssistantModal />
               </>
             ) : (
               /* Caregiver Portal */

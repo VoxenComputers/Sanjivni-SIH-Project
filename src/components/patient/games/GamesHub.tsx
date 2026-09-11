@@ -6,20 +6,19 @@ import { GuessThePictureGame } from './GuessThePictureGame';
 import { SpacedRetrievalGame } from './SpacedRetrievalGame';
 import { Mascot } from '../../common/Mascot';
 import { SpeechButton } from '../../common/SpeechButton';
+import { speechSynth } from '../../../utils/speech';
 import { soundFx } from '../../../utils/audio';
 import { BrainCircuit, Flame, Trophy, Play, Layers, Eye, Sparkles, HelpCircle } from 'lucide-react';
 
 export const GamesHub: React.FC = () => {
-  const { streak, totalStars, gameHistory, t, selectedRegion } = useApp();
+  const { streak, totalStars, mmseScore, gameHistory, t, selectedRegion } = useApp();
   const [activeGame, setActiveGame] = useState<'none' | 'memory-match' | 'match-order' | 'guess-picture' | 'spaced-retrieval'>('none');
 
   // Page Visibility API: Stop audio and terminate active game state immediately on tab switch
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-        }
+        speechSynth.stop();
         soundFx.stopAll();
         setActiveGame('none');
       }
@@ -58,12 +57,15 @@ export const GamesHub: React.FC = () => {
               <Flame className="w-9 h-9 fill-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-2xl sm:text-3xl font-black text-stone-900 dark:text-white tracking-tight leading-none">
                   {streak} {t('streak')}
                 </h2>
                 <span className="bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 font-black text-xs sm:text-sm px-3 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
                   {totalStars} {t('memoryPoints')}
+                </span>
+                <span className="bg-indigo-100 dark:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200 font-black text-xs sm:text-sm px-3 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-700">
+                  MMSE: {(mmseScore ?? 25.8).toFixed(1)}/30
                 </span>
                 <span className="bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-black text-xs sm:text-sm px-3 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700 capitalize">
                   {selectedRegion ? selectedRegion.replace('-', ' ') : 'Assam'}

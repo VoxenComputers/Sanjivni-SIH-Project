@@ -45,7 +45,7 @@ const normalizePeriod = (
 };
 
 export const RoutineTimeline: React.FC = () => {
-  const { tasks: contextTasks, toggleTask, activePatientId, t } = useApp();
+  const { tasks: contextTasks, toggleTask, activePatientId, t, mmseScore } = useApp();
 
   const [dbTasks, setDbTasks] = useState<RoutineTask[] | null>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState<boolean>(false);
@@ -162,7 +162,7 @@ export const RoutineTimeline: React.FC = () => {
 
   // Handle task completion toggle with optimistic UI and live DB sync
   const handleToggleTask = async (taskId: string) => {
-    // If working with dbTasks, perform optimistic update and sync to Supabase
+    // If working with dbTasks, perform optimistic update
     if (dbTasks && dbTasks.length > 0) {
       const target = dbTasks.find((t) => t.id === taskId);
       if (target) {
@@ -174,11 +174,10 @@ export const RoutineTimeline: React.FC = () => {
               )
             : prev
         );
-        await toggleTaskCompletion(taskId, nextState);
       }
     }
 
-    // Always update global context state
+    // Always update global context state (which updates Supabase & dynamic MMSE & telemetry)
     toggleTask(taskId);
   };
 
@@ -237,6 +236,20 @@ export const RoutineTimeline: React.FC = () => {
             className="h-full bg-emerald-600 rounded-full transition-all duration-500 shadow-sm"
             style={{ width: `${progressPercent}%` }}
           />
+        </div>
+
+        {/* Cognitive MMSE Stability Feedback */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-100 dark:border-stone-800 text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-stone-600 dark:text-stone-300">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Cognitive Stability Index (MMSE):</span>
+            <span className="font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+              {(mmseScore ?? 25.8).toFixed(1)} / 30
+            </span>
+          </div>
+          <span className="font-bold text-stone-500 dark:text-stone-400">
+            {progressPercent >= 75 ? '✨ Peak Stability Maintained' : 'Complete daily checklist to strengthen score'}
+          </span>
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FamilyMember, useApp } from '../../../context/AppContext';
 import { speechSynth } from '../../../utils/speech';
 import { soundFx } from '../../../utils/audio';
-import { Volume2, VolumeX, Sparkles } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, Loader2 } from 'lucide-react';
 
 interface FamilyCardProps {
   member: FamilyMember;
@@ -10,22 +10,32 @@ interface FamilyCardProps {
 }
 
 export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
-  const { t } = useApp();
+  const { language, t } = useApp();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const handlePlayVoice = () => {
-    if (isPlaying) {
+    if (isPlaying || isLoading) {
       speechSynth.stop();
       setIsPlaying(false);
+      setIsLoading(false);
       return;
     }
 
     soundFx.playClickSound();
+    setIsLoading(true);
     const spokenText = member.quote || member.voiceMessage || 'Pranam! Remember that our family is always with you. Keep smiling!';
     speechSynth.speak(
       spokenText,
-      () => setIsPlaying(true),
-      () => setIsPlaying(false)
+      () => {
+        setIsLoading(false);
+        setIsPlaying(true);
+      },
+      () => {
+        setIsLoading(false);
+        setIsPlaying(false);
+      },
+      language
     );
   };
 
@@ -174,6 +184,8 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
         className={`w-full duo-btn min-h-[48px] text-base font-black ${
           isPlaying
             ? 'duo-btn-amber animate-pulse'
+            : isLoading
+            ? 'duo-btn-green opacity-90'
             : 'duo-btn-green'
         }`}
         aria-label={`Listen to voice message from ${member.name}`}
@@ -182,6 +194,11 @@ export const FamilyCard: React.FC<FamilyCardProps> = ({ member, isFirst }) => {
           <>
             <VolumeX className="w-5 h-5 text-white flex-shrink-0" />
             <span>{t('speakingTapStop')}</span>
+          </>
+        ) : isLoading ? (
+          <>
+            <Loader2 className="w-5 h-5 text-white animate-spin flex-shrink-0" />
+            <span>{t('loadingAudio') || 'Loading Voice...'}</span>
           </>
         ) : (
           <>
