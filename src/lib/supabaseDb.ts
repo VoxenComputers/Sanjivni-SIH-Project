@@ -767,6 +767,8 @@ export const addFamilyMemberDb = async (
       } else if (data && data.length > 0) {
         newMember.id = data[0].id;
       }
+      persistLocally(newMember);
+      return newMember;
     }
   } catch (err: any) {
     console.warn('[Supabase DB] addFamilyMemberDb exception (persisting locally):', err?.message);
@@ -826,6 +828,17 @@ export const updateFamilyMemberDb = async (
  * 10. Delete a Family Member (Caregiver Dashboard live sync)
  */
 export const deleteFamilyMemberDb = async (memberId: string): Promise<boolean> => {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('smriti_custom_family');
+      if (stored) {
+        const list: FamilyMember[] = JSON.parse(stored);
+        const filtered = list.filter((m) => m.id !== memberId);
+        localStorage.setItem('smriti_custom_family', JSON.stringify(filtered));
+      }
+    } catch {}
+  }
+
   try {
     const { error } = await supabase
       .from('family_members')

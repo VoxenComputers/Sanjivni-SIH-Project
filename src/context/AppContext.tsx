@@ -516,6 +516,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
+  const localizedFamily = useMemo(() => getLocalizedFamily(language), [language]);
+
   const loadFamilyMembersFromDb = useCallback(async (targetPatientId?: string | null) => {
     const idToQuery = targetPatientId || activePatientId;
     if (!idToQuery || idToQuery === 'demo-patient-koka') {
@@ -524,42 +526,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       setIsLoadingFamily(true);
-      const { data, error } = await supabase
+
+      // Check session auth user ID if available (for query fallback if patient_id was saved under caregiver user id)
+      let sessionUserId: string | null = null;
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        sessionUserId = sessionData?.session?.user?.id || null;
+      } catch {}
+
+      let { data, error } = await supabase
         .from('family_members')
         .select('*')
         .eq('patient_id', idToQuery)
         .order('created_at', { ascending: true });
 
-      if (error) {
-        console.warn('[AppContext] Error querying family_members from Supabase:', error.message);
-        return;
+      // Fallback query under session auth user if primary query returned empty
+      if ((!data || data.length === 0) && sessionUserId && sessionUserId !== idToQuery) {
+        const { data: authData, error: authError } = await supabase
+          .from('family_members')
+          .select('*')
+          .eq('patient_id', sessionUserId)
+          .order('created_at', { ascending: true });
+        if (!authError && authData && authData.length > 0) {
+          data = authData;
+          error = null;
+        }
       }
 
-      if (data && data.length > 0) {
-        const avatarColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6'];
-        const mapped: FamilyMember[] = data.map((row: any, index: number) => ({
-          id: row.id,
-          name: row.name,
-          relation: row.relation,
-          localRelation: row.local_relation || `${row.relation} • Family Member`,
-          age: row.age || 30,
-          avatarColor: row.avatar_color || avatarColors[index % avatarColors.length],
-          avatarIcon: 'user' as const,
-          voiceMessage: row.voice_message || `Pranam! Remember that our family is always with you. Keep smiling!`,
-          lastSpokenDate: 'Recently added',
-          funFact: row.fun_fact || `Loves spending time together with the family.`,
-          avatarUrl: row.avatar_url || undefined,
-        }));
+      if (error) {
+        console.warn('[AppContext] Error querying family_members from Supabase:', error.message);
+      }
 
-        setCustomFamilyMembers(mapped);
+      const avatarColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6'];
+      const mapped: FamilyMember[] = (data || []).map((row: any, index: number) => ({
+        id: row.id,
+        name: row.name,
+        relation: row.relation,
+        relationship: row.relationship || row.relation,
+        localRelation: row.local_relation || `${row.relation} • Family Member`,
+        age: row.age || 30,
+        avatarColor: row.avatar_color || avatarColors[index % avatarColors.length],
+        avatarIcon: 'user' as const,
+        voiceMessage: row.voice_message || row.quote || `Pranam! Remember that our family is always with you. Keep smiling!`,
+        quote: row.quote || row.voice_message || `Pranam! Remember that our family is always with you. Keep smiling!`,
+        lastSpokenDate: 'Recently added',
+        description: row.description || row.fun_fact || `Loves spending time together with the family.`,
+        funFact: row.fun_fact || row.description || `Loves spending time together with the family.`,
+        avatarUrl: row.avatar_url || undefined,
+      }));
+
+      // Merge with any local custom family members in localStorage so newly added/offline members are NEVER lost
+      const merged = [...mapped];
+      const existingIds = new Set(mapped.map((m) => m.id));
+      const existingNames = new Set(mapped.map((m) => m.name.toLowerCase().trim()));
+
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('smriti_custom_family');
+          if (stored) {
+            const localList: FamilyMember[] = JSON.parse(stored);
+            if (Array.isArray(localList)) {
+              for (const localMember of localList) {
+                if (
+                  !existingIds.has(localMember.id) &&
+                  !existingNames.has(localMember.name.toLowerCase().trim())
+                ) {
+                  merged.push(localMember);
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+
+      if (merged.length > 0) {
+        setCustomFamilyMembers(merged);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('smriti_custom_family', JSON.stringify(mapped));
+          localStorage.setItem('smriti_custom_family', JSON.stringify(merged));
         }
-      } else if (data && data.length === 0) {
-        // Explicitly set to empty array so demo cards are NOT shown for linked/authenticated patient
-        setCustomFamilyMembers([]);
+      } else {
+        // If neither Supabase nor localStorage has custom members, seed with baseline localizedFamily
+        setCustomFamilyMembers(localizedFamily);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('smriti_custom_family', JSON.stringify([]));
+          localStorage.setItem('smriti_custom_family', JSON.stringify(localizedFamily));
         }
       }
     } catch (err) {
@@ -567,7 +616,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsLoadingFamily(false);
     }
-  }, [activePatientId]);
+  }, [activePatientId, localizedFamily]);
 
   const refreshFamilyMembers = useCallback(async () => {
     await loadFamilyMembersFromDb();
@@ -719,29 +768,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   }, [auth.user?.id, activePatientId, isPaired, connectionCode]);
 
-  const localizedFamily = React.useMemo(() => getLocalizedFamily(language), [language]);
-
   const familyMembers = React.useMemo(() => {
-    // 1. If custom family members exist (from Supabase query or localStorage cache)
-    if (customFamilyMembers !== null) {
-      // If NOT in demo sandbox, strictly use custom members (never fall back to 4 demo cards)
-      if (!isOfflineDemoSandbox) {
-        return customFamilyMembers.filter((m) => !DEMO_FAMILY_IDS.has(m.id));
-      }
-
-      // If in demo sandbox, use custom members if available
-      if (customFamilyMembers.length > 0) {
-        return customFamilyMembers;
-      }
+    if (customFamilyMembers && customFamilyMembers.length > 0) {
+      return customFamilyMembers;
     }
-
-    // 2. Only fall back to localized demo cards if explicitly in offline demo sandbox
-    if (isOfflineDemoSandbox) {
-      return localizedFamily;
-    }
-
-    return [];
-  }, [customFamilyMembers, localizedFamily, isOfflineDemoSandbox, DEMO_FAMILY_IDS]);
+    return localizedFamily;
+  }, [customFamilyMembers, localizedFamily]);
 
   const [tasks, setTasks] = useState<RoutineTask[]>(() => {
     if (typeof window !== 'undefined') {

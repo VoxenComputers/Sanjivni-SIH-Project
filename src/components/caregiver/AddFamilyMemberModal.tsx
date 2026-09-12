@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp, FamilyMember } from '../../context/AppContext';
+import { useApp, FamilyMember, DEFAULT_PATIENT_ID } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { soundFx } from '../../utils/audio';
 import { uploadMediaFile, addFamilyMemberDb, resolveToValidUuid, isValidUuid } from '../../lib/supabaseDb';
@@ -81,7 +81,7 @@ export const AddFamilyMemberModal: React.FC<AddFamilyMemberModalProps> = ({
     setSuccessMessage('');
 
     const resolvedPatientId = resolveToValidUuid(
-      customPatientId || (authUser?.id && isValidUuid(authUser.id) ? authUser.id : activePatientId) || appUser?.id
+      customPatientId || activePatientId || (authUser?.id && isValidUuid(authUser.id) ? authUser.id : undefined) || appUser?.id || DEFAULT_PATIENT_ID
     );
 
     let createdMember: FamilyMember;
@@ -121,7 +121,12 @@ export const AddFamilyMemberModal: React.FC<AddFamilyMemberModalProps> = ({
 
     // STEP 2: MODAL & STATE SUCCESS TRANSITION
     try {
-      updateCustomFamilyMembers([...familyMembers, createdMember]);
+      const existingList = Array.isArray(familyMembers) ? familyMembers : [];
+      const deduplicated = [
+        ...existingList.filter((m) => m.id !== createdMember.id && m.name.toLowerCase().trim() !== createdMember.name.toLowerCase().trim()),
+        createdMember,
+      ];
+      updateCustomFamilyMembers(deduplicated);
       if (onSuccess) onSuccess(createdMember);
     } catch (stateErr) {
       console.warn('Local state update notice:', stateErr);
