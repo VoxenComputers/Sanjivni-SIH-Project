@@ -337,10 +337,10 @@ export const CaregiverChatbot: React.FC = () => {
                   <Bot className="w-7 h-7 text-emerald-100" />
                 </div>
                 <div>
-                  <h3 className="text-lg sm:text-xl font-black tracking-tight flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2 flex-wrap">
                     <span>Sanjivni AI Companion</span>
-                    <span className="bg-emerald-600/90 text-emerald-100 text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-400/80 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-yellow-300" />
+                    <span className="bg-emerald-600/90 text-emerald-100 text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-400/80 inline-flex items-center gap-1 whitespace-nowrap shadow-xs">
+                      <Sparkles className="w-2.5 h-2.5 text-yellow-300" />
                       Gemini 3.6 Flash
                     </span>
                   </h3>
@@ -450,14 +450,14 @@ export const CaregiverChatbot: React.FC = () => {
             )}
 
             {/* Quick Prompt Chips */}
-            <div className="p-2.5 bg-stone-100 dark:bg-stone-800/90 border-b border-stone-200 dark:border-stone-700 flex gap-2 overflow-x-auto no-scrollbar">
+            <div className="px-3 py-2 bg-stone-100 dark:bg-stone-800/90 border-b border-stone-200 dark:border-stone-700 flex gap-2 overflow-x-auto no-scrollbar">
               {quickPrompts.map((qp, idx) => {
                 const IconComponent = qp.icon;
                 return (
                   <button
                     key={idx}
                     onClick={() => handleSendMessage(qp.query)}
-                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-stone-900 border-2 border-stone-300 dark:border-stone-700 hover:border-emerald-600 text-stone-800 dark:text-stone-100 text-xs font-black hover:bg-emerald-50 dark:hover:bg-stone-800 transition-all active:scale-95 shadow-sm"
+                    className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 hover:border-emerald-600 text-stone-700 dark:text-stone-200 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-stone-800 transition-all active:scale-95 shadow-2xs cursor-pointer"
                   >
                     <IconComponent className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 flex-shrink-0" />
                     <span>{qp.label}</span>

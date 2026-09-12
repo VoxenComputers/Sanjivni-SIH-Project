@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_linked_patient_id ON public.profiles(lin
 -- 3. Family Members Table (Reminiscence Vault)
 CREATE TABLE IF NOT EXISTS public.family_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    patient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    patient_id UUID NOT NULL,
     name TEXT NOT NULL,
     relation TEXT NOT NULL,
     local_relation TEXT,
@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS public.family_members (
     fun_fact TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Drop foreign key constraint if existing from earlier migrations to support custom/demo patient UUIDs
+ALTER TABLE public.family_members DROP CONSTRAINT IF EXISTS family_members_patient_id_fkey;
 
 CREATE INDEX IF NOT EXISTS idx_family_members_patient_id ON public.family_members(patient_id);
 

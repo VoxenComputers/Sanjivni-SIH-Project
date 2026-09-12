@@ -16,16 +16,7 @@ import {
   Loader2,
   ChevronRight,
   Sparkles,
-  Bot,
-  Key,
-  ExternalLink,
 } from 'lucide-react';
-import {
-  getGeminiApiKey,
-  setCustomGeminiApiKey,
-  testGeminiConnection,
-  isGeminiConfigured,
-} from '../../services/geminiConfig';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -51,34 +42,6 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [geminiKeyInput, setGeminiKeyInput] = useState(getGeminiApiKey());
-  const [isKeySaved, setIsKeySaved] = useState(false);
-  const [isTestingGemini, setIsTestingGemini] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  const handleSaveGeminiKey = () => {
-    soundFx.playClickSound();
-    setCustomGeminiApiKey(geminiKeyInput);
-    setIsKeySaved(true);
-    setTimeout(() => setIsKeySaved(false), 2500);
-  };
-
-  const handleTestGemini = async () => {
-    soundFx.playClickSound();
-    setIsTestingGemini(true);
-    setTestResult(null);
-    try {
-      const res = await testGeminiConnection(geminiKeyInput);
-      setTestResult(res);
-      if (res.success) {
-        soundFx.playSuccessChime();
-      }
-    } catch (err: any) {
-      setTestResult({ success: false, message: err?.message || 'Connection test failed.' });
-    } finally {
-      setIsTestingGemini(false);
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -231,93 +194,6 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                 {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                 <span>{copied ? 'Copied' : 'Copy'}</span>
               </button>
-            </div>
-          </div>
-
-          {/* Section 2.5: Google Gemini AI Cloud & Vercel Sync */}
-          <div className="bg-stone-50 dark:bg-stone-800/80 rounded-2xl p-4 border-2 border-stone-200 dark:border-stone-700 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 flex items-center justify-center border border-indigo-300 dark:border-indigo-800">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-stone-900 dark:text-white">Google Gemini AI Engine</h4>
-                  <p className="text-[11px] font-bold text-stone-500 dark:text-stone-400">
-                    Vercel & localhost connectivity
-                  </p>
-                </div>
-              </div>
-              <span
-                className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
-                  isGeminiConfigured()
-                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
-                    : 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
-                }`}
-              >
-                {isGeminiConfigured() ? '🟢 Active Key' : '🟡 Fallback Engine'}
-              </span>
-            </div>
-
-            {/* API Key Input Field */}
-            <div className="space-y-1.5 pt-1">
-              <label className="text-[11px] font-black text-stone-600 dark:text-stone-300 flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-stone-400" />
-                <span>Gemini API Key (Google AI Studio)</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  value={geminiKeyInput}
-                  onChange={(e) => setGeminiKeyInput(e.target.value)}
-                  placeholder="Paste AIzaSy... or AQ.Ab8... key"
-                  className="flex-1 px-3 py-2 text-xs font-mono rounded-xl bg-white dark:bg-stone-900 border-2 border-stone-200 dark:border-stone-700 text-stone-900 dark:text-white focus:outline-hidden focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveGeminiKey}
-                  className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-xs cursor-pointer active:scale-95 flex-shrink-0"
-                >
-                  {isKeySaved ? 'Saved!' : 'Save Key'}
-                </button>
-              </div>
-              <p className="text-[10px] text-stone-400 font-bold leading-tight">
-                For permanent Vercel deployment: Set <code className="bg-stone-200 dark:bg-stone-700 px-1 py-0.5 rounded text-stone-800 dark:text-stone-200 font-mono">VITE_GEMINI_API_KEY</code> in Vercel Project Settings &gt; Environment Variables, then Redeploy.
-              </p>
-            </div>
-
-            {/* Diagnostic Ping Test */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={handleTestGemini}
-                disabled={isTestingGemini}
-                className="w-full py-2 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-900 dark:text-indigo-200 text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-              >
-                {isTestingGemini ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                    <span>Pinging Google Gemini API...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Test Gemini API Connection Now</span>
-                  </>
-                )}
-              </button>
-
-              {testResult && (
-                <div
-                  className={`mt-2 p-2.5 rounded-xl border text-[11px] font-bold ${
-                    testResult.success
-                      ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 text-emerald-800 dark:text-emerald-200'
-                      : 'bg-rose-50 dark:bg-rose-950/70 border-rose-300 text-rose-800 dark:text-rose-200'
-                  }`}
-                >
-                  {testResult.message}
-                </div>
-              )}
             </div>
           </div>
 

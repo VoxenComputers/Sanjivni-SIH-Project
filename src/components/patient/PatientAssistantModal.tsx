@@ -327,49 +327,48 @@ export const PatientAssistantModal: React.FC = () => {
           <div className="w-full max-w-2xl bg-[#FAF8F5] dark:bg-stone-900 h-[92vh] max-h-[780px] rounded-3xl shadow-2xl flex flex-col border-4 border-stone-300 dark:border-stone-700 animate-in zoom-in-95 duration-200 overflow-hidden">
             
             {/* Header */}
-            <div className="bg-emerald-800 dark:bg-emerald-950 text-white p-4 sm:p-5 flex items-center justify-between border-b-4 border-emerald-900 shadow-sm flex-shrink-0">
-              <div className="flex items-center gap-3.5">
-                <div className="w-13 h-13 rounded-2xl bg-white/15 border-2 border-emerald-400/80 flex items-center justify-center shadow-inner flex-shrink-0">
-                  <HeartHandshake className="w-8 h-8 text-emerald-200" />
+            <div className="bg-emerald-850 dark:bg-emerald-950 text-white px-4 py-3 sm:px-5 sm:py-3.5 flex items-center justify-between border-b-2 border-emerald-900 shadow-sm flex-shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shadow-inner flex-shrink-0">
+                  <HeartHandshake className="w-6 h-6 text-emerald-100" />
                 </div>
-                <div>
-                  <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-                    <span>Sanjivni Saathi</span>
-                    <span className="bg-emerald-700 text-emerald-100 text-xs font-black px-2.5 py-0.5 rounded-full border border-emerald-400">
-                      Your Companion
-                    </span>
-                    <span className="bg-emerald-900/90 text-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-400/60 flex items-center gap-1 shadow-xs">
-                      <Sparkles className="w-3 h-3 text-amber-300" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">
+                      Sanjivni Saathi
+                    </h3>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-200 bg-emerald-900/80 px-2 py-0.5 rounded-full border border-emerald-500/40 whitespace-nowrap shadow-xs">
+                      <Sparkles className="w-2.5 h-2.5 text-amber-300 flex-shrink-0" />
                       Gemini 3.6 Flash
                     </span>
-                  </h3>
-                  <p className="text-xs sm:text-sm text-emerald-200 font-bold mt-0.5 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-300" />
-                    <span>Always by your side • Safe & Reassuring</span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-emerald-200/90 font-medium flex items-center gap-1 mt-0.5 truncate">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0" />
+                    <span>Safe & Reassuring Companion</span>
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button
                   type="button"
                   onClick={handleToggleAutoSpeak}
                   title={autoSpeak ? 'Auto-Voice readout is ON (Sarvam AI & Browser Fallback)' : 'Auto-Voice readout is muted'}
-                  className={`px-3 py-2 rounded-2xl border-2 flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${
+                  className={`h-8 px-2.5 sm:px-3 rounded-full border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                     autoSpeak
-                      ? 'bg-white/20 hover:bg-white/30 text-white border-white/40 shadow-sm'
+                      ? 'bg-emerald-700/90 hover:bg-emerald-700 text-white border-emerald-400/80 shadow-xs'
                       : 'bg-emerald-950/60 hover:bg-emerald-950 text-emerald-300 border-emerald-700/60'
                   }`}
                 >
                   {autoSpeak ? (
                     <>
-                      <Volume2 className={`w-4 h-4 text-amber-300 ${isSpeaking ? 'animate-bounce' : ''}`} />
+                      <Volume2 className={`w-3.5 h-3.5 text-amber-300 flex-shrink-0 ${isSpeaking ? 'animate-bounce' : ''}`} />
                       <span className="hidden sm:inline">Auto-Voice: ON</span>
                       <span className="sm:hidden">Voice ON</span>
                     </>
                   ) : (
                     <>
-                      <VolumeX className="w-4 h-4 text-emerald-300/70" />
+                      <VolumeX className="w-3.5 h-3.5 text-emerald-300/70 flex-shrink-0" />
                       <span className="hidden sm:inline">Auto-Voice: OFF</span>
                       <span className="sm:hidden">Voice OFF</span>
                     </>
@@ -382,137 +381,141 @@ export const PatientAssistantModal: React.FC = () => {
                     stop();
                     setIsOpen(false);
                   }}
-                  className="w-11 h-11 rounded-2xl bg-emerald-900/80 hover:bg-emerald-700 flex items-center justify-center text-white border border-emerald-500/60 transition-colors cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center border border-white/20 transition-colors cursor-pointer"
                   aria-label="Close Assistant"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
             {/* Reassurance & Caregiver Connected Bar */}
-            <div className="bg-amber-50 dark:bg-amber-950/50 border-b-2 border-amber-200 dark:border-amber-900 px-4 py-2 flex items-center justify-between text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-200 flex-shrink-0">
+            <div className="bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-900 px-4 py-1.5 flex items-center justify-between text-xs font-bold text-amber-900 dark:text-amber-200 flex-shrink-0">
               <div className="flex items-center gap-2">
-                <Smile className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <Smile className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                 <span>You are safe at home. Speak or type freely.</span>
               </div>
-              <span className="text-[11px] font-black uppercase text-amber-700 dark:text-amber-400 hidden sm:inline">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 hidden sm:inline">
                 Caregiver Connected
               </span>
             </div>
 
             {/* Active Voice Listening Banner */}
             {isListening && (
-              <div className="bg-rose-50 dark:bg-rose-950/80 border-b-3 border-rose-400 dark:border-rose-700 p-3 px-4 flex items-center justify-between gap-3 text-rose-950 dark:text-rose-100 animate-pulse flex-shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-3.5 h-3.5 rounded-full bg-rose-600 animate-ping"></span>
-                  <span className="font-black text-sm sm:text-base">
-                    🎤 Listening... Speak now (words appear in box below)
+              <div className="bg-rose-50 dark:bg-rose-950/80 border-b-2 border-rose-400 dark:border-rose-700 px-4 py-2 flex items-center justify-between gap-3 text-rose-950 dark:text-rose-100 animate-pulse flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping"></span>
+                  <span className="font-bold text-xs sm:text-sm">
+                    Listening... Speak now (words will appear below)
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={handleToggleVoiceInput}
-                  className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-sm cursor-pointer"
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow-xs cursor-pointer"
                 >
-                  Done Speaking
+                  Done
                 </button>
               </div>
             )}
 
             {/* Messages Feed */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#FAF8F5] dark:bg-stone-900">
+            <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3.5 bg-[#FAF8F5] dark:bg-stone-900">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
                 >
-                  <div className="flex items-start gap-2 max-w-[88%] sm:max-w-[80%]">
+                  <div className={`flex items-start gap-2 max-w-[92%] sm:max-w-[85%] ${msg.sender === 'user' ? 'justify-end' : ''}`}>
                     {msg.sender === 'bot' && (
-                      <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-2 border-emerald-500 flex items-center justify-center flex-shrink-0 mt-1">
-                        <HeartHandshake className="w-5 h-5" />
+                      <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+                        <HeartHandshake className="w-4 h-4 sm:w-5 sm:h-5" />
                       </div>
                     )}
 
                     <div
-                      className={`rounded-3xl p-4 sm:p-5 shadow-sm text-left ${
+                      className={`rounded-2xl p-3.5 sm:p-4 shadow-xs text-left ${
                         msg.sender === 'user'
-                          ? 'bg-emerald-700 text-white rounded-tr-sm font-bold text-lg sm:text-xl'
+                          ? 'bg-emerald-700 text-white rounded-tr-xs font-bold text-sm sm:text-base border border-emerald-800'
                           : msg.isEmergency
-                          ? 'bg-rose-50 dark:bg-rose-950/60 border-3 border-rose-400 dark:border-rose-700 text-rose-950 dark:text-rose-100 rounded-tl-sm text-lg sm:text-xl font-bold'
-                          : 'bg-white dark:bg-stone-800 border-3 border-stone-200 dark:border-stone-700 text-stone-900 dark:text-stone-100 rounded-tl-sm text-lg sm:text-xl font-bold'
+                          ? 'bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-400 dark:border-rose-700 text-rose-950 dark:text-rose-100 rounded-tl-xs text-sm sm:text-base font-bold'
+                          : 'bg-white dark:bg-stone-800 border-2 border-stone-200 dark:border-stone-700 text-stone-900 dark:text-stone-100 rounded-tl-xs text-sm sm:text-base'
                       }`}
                     >
                       {msg.isEmergency && (
-                        <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 text-sm font-black mb-2 uppercase tracking-wider">
-                          <AlertTriangle className="w-5 h-5 text-rose-600 animate-pulse" />
+                        <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 text-xs font-black mb-1.5 uppercase tracking-wider">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 animate-pulse" />
                           <span>Caregiver Alert Triggered</span>
                         </div>
                       )}
 
-                      <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                      <p className="leading-relaxed whitespace-pre-wrap font-medium">{msg.text}</p>
 
-                      {/* Read Aloud Voice Button for Seniors */}
+                      {/* Bot Response Actions & Aligned Footer */}
                       {msg.sender === 'bot' && (
-                        <div className="mt-3.5 pt-2.5 border-t border-stone-100 dark:border-stone-700 flex flex-wrap items-center justify-between gap-2">
-                          <SpeechButton 
-                            text={msg.text} 
-                            label="Read Aloud" 
-                            size="sm" 
-                            className="text-xs font-black bg-stone-100 dark:bg-stone-700 hover:bg-emerald-100 text-stone-800 dark:text-stone-200"
-                          />
+                        <div className="mt-3 pt-2.5 border-t border-stone-100 dark:border-stone-700/80 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <SpeechButton 
+                              text={msg.text} 
+                              label="Read Aloud" 
+                              size="sm" 
+                            />
 
-                          {/* Quick Action Shortcuts */}
-                          {msg.suggestedAction === 'sos' && (
-                            <button
-                              onClick={() => handleActionClick('sos')}
-                              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center gap-1.5 shadow-sm active:translate-y-0.5 cursor-pointer"
-                            >
-                              <PhoneCall className="w-3.5 h-3.5" />
-                              <span>Emergency SOS</span>
-                            </button>
-                          )}
+                            {/* Quick Action Shortcuts */}
+                            {msg.suggestedAction === 'sos' && (
+                              <button
+                                onClick={() => handleActionClick('sos')}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs active:scale-95 cursor-pointer transition-all"
+                              >
+                                <PhoneCall className="w-3.5 h-3.5" />
+                                <span>Emergency SOS</span>
+                              </button>
+                            )}
 
-                          {msg.suggestedAction === 'view_routine' && (
-                            <button
-                              onClick={() => handleActionClick('view_routine')}
-                              className="px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-xs font-black border border-emerald-300 dark:border-emerald-700 flex items-center gap-1 hover:bg-emerald-200 cursor-pointer"
-                            >
-                              <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>View Daily Routine</span>
-                            </button>
-                          )}
+                            {msg.suggestedAction === 'view_routine' && (
+                              <button
+                                onClick={() => handleActionClick('view_routine')}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-xs font-bold border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-200 cursor-pointer transition-all"
+                              >
+                                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Daily Routine</span>
+                              </button>
+                            )}
 
-                          {msg.suggestedAction === 'view_family' && (
-                            <button
-                              onClick={() => handleActionClick('view_family')}
-                              className="px-3 py-1 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 text-xs font-black border border-amber-300 dark:border-amber-700 flex items-center gap-1 hover:bg-amber-200 cursor-pointer"
-                            >
-                              <Users className="w-3.5 h-3.5 text-amber-600" />
-                              <span>Open Family Book</span>
-                            </button>
-                          )}
+                            {msg.suggestedAction === 'view_family' && (
+                              <button
+                                onClick={() => handleActionClick('view_family')}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700 hover:bg-amber-200 cursor-pointer transition-all"
+                              >
+                                <Users className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Family Book</span>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-stone-400 dark:text-stone-500">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/70 px-1.5 py-0.5 rounded-full border border-emerald-300/60 dark:border-emerald-800">
+                              <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                              Gemini 3.6
+                            </span>
+                            <span>{msg.timestamp}</span>
+                          </div>
                         </div>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 px-3">
-                    <span className="text-[11px] font-bold text-stone-400">
+
+                  {msg.sender === 'user' && (
+                    <div className="text-[10px] font-semibold text-stone-400 dark:text-stone-500 mt-1 pr-1">
                       {msg.timestamp}
-                    </span>
-                    {msg.sender === 'bot' && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/70 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-                        <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
-                        <span>Gemini 3.6 Flash</span>
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
 
               {isTyping && (
-                <div className="flex items-center gap-2 text-stone-500 font-bold text-sm bg-white dark:bg-stone-800 p-3.5 rounded-2xl border-2 border-stone-200 dark:border-stone-700 w-fit animate-pulse">
-                  <HeartHandshake className="w-5 h-5 text-emerald-600 animate-spin" />
+                <div className="flex items-center gap-2 text-stone-600 dark:text-stone-300 font-bold text-xs bg-white dark:bg-stone-800 px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 w-fit animate-pulse shadow-xs">
+                  <HeartHandshake className="w-4 h-4 text-emerald-600 animate-spin" />
                   <span>Sanjivni Saathi is thinking...</span>
                 </div>
               )}
@@ -521,81 +524,81 @@ export const PatientAssistantModal: React.FC = () => {
             </div>
 
             {/* Quick Prompt Tap Suggestions */}
-            <div className="px-4 py-2.5 bg-stone-100 dark:bg-stone-800/80 border-t-2 border-stone-200 dark:border-stone-700 flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
-              <span className="text-xs font-black uppercase text-stone-500 dark:text-stone-400 flex-shrink-0">
+            <div className="px-3.5 py-2 bg-stone-100 dark:bg-stone-800/90 border-t border-stone-200 dark:border-stone-700 flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-stone-500 dark:text-stone-400 flex-shrink-0">
                 Tap to Ask:
               </span>
               <button
                 onClick={() => handleQuickPrompt('What is my next task?')}
-                className="px-3 py-1.5 rounded-xl bg-white dark:bg-stone-700 border border-stone-300 dark:border-stone-600 text-xs font-black text-stone-800 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-bold text-stone-700 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all active:scale-95 cursor-pointer shadow-2xs"
               >
-                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                <span>📅 Next Task</span>
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Next Task</span>
               </button>
               <button
                 onClick={() => handleQuickPrompt('Did I take my medicines today?')}
-                className="px-3 py-1.5 rounded-xl bg-white dark:bg-stone-700 border border-stone-300 dark:border-stone-600 text-xs font-black text-stone-800 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-bold text-stone-700 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all active:scale-95 cursor-pointer shadow-2xs"
               >
-                <Pill className="w-3.5 h-3.5 text-rose-500" />
-                <span>💊 My Medicines</span>
+                <Pill className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
+                <span>My Medicines</span>
               </button>
               <button
                 onClick={() => handleQuickPrompt('Tell me about my family')}
-                className="px-3 py-1.5 rounded-xl bg-white dark:bg-stone-700 border border-stone-300 dark:border-stone-600 text-xs font-black text-stone-800 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-bold text-stone-700 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all active:scale-95 cursor-pointer shadow-2xs"
               >
-                <Users className="w-3.5 h-3.5 text-blue-500" />
-                <span>👨‍👩‍👦 My Family</span>
+                <Users className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+                <span>My Family</span>
               </button>
               <button
                 onClick={() => handleQuickPrompt('I feel a bit restless')}
-                className="px-3 py-1.5 rounded-xl bg-white dark:bg-stone-700 border border-stone-300 dark:border-stone-600 text-xs font-black text-stone-800 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-bold text-stone-700 dark:text-stone-200 flex items-center gap-1.5 flex-shrink-0 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all active:scale-95 cursor-pointer shadow-2xs"
               >
-                <Smile className="w-3.5 h-3.5 text-amber-500" />
-                <span>🧘 Feeling Restless</span>
+                <Smile className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                <span>Feeling Restless</span>
               </button>
             </div>
 
-            {/* Input Bar with Large Mic & Large Text Input */}
-            <div className="p-3 sm:p-4 bg-white dark:bg-stone-900 border-t-3 border-stone-200 dark:border-stone-700 flex-shrink-0">
+            {/* Input Bar */}
+            <div className="p-3 sm:p-4 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-700 flex-shrink-0">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSendMessage();
                 }}
-                className="flex items-center gap-2.5"
+                className="flex items-center gap-2"
               >
                 {/* Voice Input Button */}
                 <button
                   type="button"
                   onClick={handleToggleVoiceInput}
-                  className={`h-13 w-13 rounded-2xl flex items-center justify-center border-b-4 active:border-b-0 active:translate-y-1 transition-all flex-shrink-0 shadow-md cursor-pointer ${
+                  className={`h-11 w-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0 cursor-pointer shadow-xs ${
                     isListening
-                      ? 'bg-rose-500 hover:bg-rose-600 border-rose-700 text-white animate-pulse ring-4 ring-rose-400/50'
-                      : 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 dark:hover:bg-emerald-900 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse ring-2 ring-rose-400'
+                      : 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950 dark:hover:bg-emerald-900 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
                   }`}
                   aria-label={isListening ? 'Stop listening' : 'Start speaking'}
                   title={isListening ? 'Listening... Tap to stop' : 'Tap to speak your question'}
                 >
-                  {isListening ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6" />}
+                  {isListening ? <MicOff className="w-5 h-5 text-white" /> : <Mic className="w-5 h-5" />}
                 </button>
 
-                {/* Input Text Field (Senior-accessible font size: 18px / text-lg) */}
+                {/* Input Text Field */}
                 <input
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder={isListening ? 'Listening... Speak now' : 'Ask your Saathi anything...'}
-                  className="flex-1 bg-stone-50 dark:bg-stone-800 border-2 border-stone-300 dark:border-stone-700 rounded-2xl px-4 py-3 text-stone-900 dark:text-stone-100 font-bold text-base sm:text-lg focus:outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-stone-800 transition-colors shadow-inner"
+                  className="flex-1 bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-xl px-3.5 py-2.5 text-stone-900 dark:text-stone-100 font-medium text-sm sm:text-base focus:outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-stone-800 transition-colors shadow-inner"
                 />
 
                 {/* Send Button */}
                 <button
                   type="submit"
                   disabled={!inputText.trim() || isTyping}
-                  className="h-13 w-13 rounded-2xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white flex items-center justify-center border-b-4 border-emerald-900 active:border-b-0 active:translate-y-1 transition-all flex-shrink-0 shadow-md cursor-pointer"
+                  className="h-11 w-11 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all flex-shrink-0 shadow-xs cursor-pointer active:scale-95"
                   aria-label="Send message"
                 >
-                  <Send className="w-6 h-6" />
+                  <Send className="w-4 h-4" />
                 </button>
               </form>
             </div>

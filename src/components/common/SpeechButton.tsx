@@ -56,16 +56,24 @@ export const SpeechButton: React.FC<SpeechButtonProps> = ({
   };
 
 
-  const sizeClasses = {
-    sm: 'w-10 h-10 min-h-[44px] min-w-[44px] text-xs',
-    md: 'w-12 h-12 min-h-[48px] min-w-[48px] text-sm',
-    lg: 'w-14 h-14 min-h-[56px] min-w-[56px] text-base',
+  const hasLabel = Boolean(label);
+
+  const labelSizeClasses = {
+    sm: 'h-8 px-2.5 py-1 text-xs rounded-full min-w-0 w-auto gap-1.5',
+    md: 'h-9 px-3.5 py-1.5 text-xs sm:text-sm rounded-full min-w-0 w-auto gap-2',
+    lg: 'h-11 px-4 py-2 text-sm sm:text-base rounded-full min-w-0 w-auto gap-2.5',
+  };
+
+  const iconOnlySizeClasses = {
+    sm: 'w-8 h-8 rounded-xl text-xs',
+    md: 'w-10 h-10 rounded-2xl text-sm',
+    lg: 'w-12 h-12 rounded-2xl text-base',
   };
 
   const iconSizes = {
-    sm: 'w-5 h-5',
-    md: 'w-6 h-6',
-    lg: 'w-7 h-7',
+    sm: hasLabel ? 'w-3.5 h-3.5' : 'w-4 h-4',
+    md: hasLabel ? 'w-4 h-4' : 'w-5 h-5',
+    lg: hasLabel ? 'w-5 h-5' : 'w-6 h-6',
   };
 
   return (
@@ -86,32 +94,32 @@ export const SpeechButton: React.FC<SpeechButtonProps> = ({
           ? 'Stop reading aloud'
           : 'Listen aloud (Text-to-Speech)'
       }
-      className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-black transition-all select-none cursor-pointer flex-shrink-0 ${
+      className={`relative inline-flex items-center justify-center font-bold transition-all select-none cursor-pointer flex-shrink-0 whitespace-nowrap ${
         isCurrentSpeaking
-          ? 'bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 border-2 border-amber-500 shadow-duo-amber scale-105'
+          ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border border-amber-500 shadow-xs scale-[1.02]'
           : isLoading
-          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border-2 border-emerald-400 dark:border-emerald-600 shadow-sm'
-          : 'bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border-2 border-emerald-300 dark:border-emerald-700 hover:border-emerald-500 shadow-sm active:translate-y-0.5'
-      } ${sizeClasses[size]} ${className}`}
+          ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border border-emerald-400 dark:border-emerald-600 shadow-xs'
+          : 'bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 hover:border-emerald-400 dark:hover:border-emerald-600 shadow-xs active:scale-95'
+      } ${hasLabel ? labelSizeClasses[size] : iconOnlySizeClasses[size]} ${className}`}
     >
       {isCurrentSpeaking ? (
         <>
-          <VolumeX className={`${iconSizes[size]} text-amber-700 animate-pulse`} />
-          {label && <span className="font-extrabold">{label}</span>}
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+          <VolumeX className={`${iconSizes[size]} text-amber-700 dark:text-amber-300 animate-pulse`} />
+          {label && <span className="font-extrabold truncate">{label}</span>}
+          <span className="absolute -top-1 -right-1 flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
           </span>
         </>
       ) : isLoading ? (
         <>
           <Loader2 className={`${iconSizes[size]} text-emerald-700 dark:text-emerald-300 animate-spin`} />
-          {label && <span className="font-extrabold">{label}</span>}
+          {label && <span className="font-extrabold truncate">{label}</span>}
         </>
       ) : (
         <>
-          <Volume2 className={`${iconSizes[size]} text-emerald-700`} />
-          {label && <span className="font-extrabold">{label}</span>}
+          <Volume2 className={`${iconSizes[size]} text-emerald-700 dark:text-emerald-400`} />
+          {label && <span className="font-extrabold truncate">{label}</span>}
         </>
       )}
     </button>

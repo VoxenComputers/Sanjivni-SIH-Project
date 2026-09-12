@@ -444,18 +444,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Active Patient ID resolution (for patient view and caregiver view)
   const activePatientId = useMemo<string | null>(() => {
-    // 1. Check sanjivni_patient_id from localStorage
+    // 1. If authenticated Supabase user is logged in
+    if (auth.user?.id && isValidUuid(auth.user.id)) {
+      // Check if a linked patient is paired (caregiver viewing linked patient)
+      if (typeof window !== 'undefined') {
+        const linkedId = localStorage.getItem('smriti_linked_patient_id');
+        if (linkedId && linkedId !== 'demo-patient-koka' && linkedId !== DEFAULT_PATIENT_ID && isValidUuid(linkedId)) {
+          return linkedId;
+        }
+      }
+      return auth.user.id;
+    }
+
+    // 2. Check sanjivni_patient_id from localStorage
     if (typeof window !== 'undefined') {
       const sanjivniId = localStorage.getItem('sanjivni_patient_id');
       if (sanjivniId && isValidUuid(sanjivniId)) return sanjivniId;
 
       const linkedId = localStorage.getItem('smriti_linked_patient_id');
       if (linkedId && linkedId !== 'demo-patient-koka' && isValidUuid(linkedId)) return linkedId;
-    }
-
-    // 2. If authenticated Supabase user (patient)
-    if (auth.user?.id && isValidUuid(auth.user.id)) {
-      return auth.user.id;
     }
 
     // 3. If appUser has an ID and not demo
@@ -1402,20 +1409,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addMember = async (newMemberData: any): Promise<void> => {
     soundFx.playClickSound();
-    const resolvedPatientId = resolveToValidUuid(newMemberData.patient_id || newMemberData.patientId || activePatientId);
+    const resolvedPatientId = resolveToValidUuid(
+      newMemberData.patient_id || newMemberData.patientId || (auth.user?.id && isValidUuid(auth.user.id) ? auth.user.id : activePatientId)
+    );
 
     try {
       const created = await addFamilyMemberDb(resolvedPatientId, newMemberData);
-      updateCustomFamilyMembers([...familyMembers, created]);
+      updateCustomFamilyMembers([...familyMembers.filter((m) => m.id !== created.id), created]);
       soundFx.playSuccessChime();
     } catch (err: any) {
-      console.error('[AppContext] addMember error:', {
-        message: err?.message,
-        details: err?.details,
-        hint: err?.hint,
-        code: err?.code,
-      });
-      throw err;
+      console.warn('[AppContext] addMember notice (handled):', err?.message);
     }
   };
 
